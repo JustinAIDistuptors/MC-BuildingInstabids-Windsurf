@@ -1,0 +1,1123 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Project Management API
+  description: |
+    API specification for the InstaBids Project Management domain. This API handles the creation and 
+    management of projects, including phases, milestones, tasks, schedules, materials, and more. 
+    It supports the complete project lifecycle from inception to completion.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production API Server
+  - url: https://api-staging.instabids.com/v1
+    description: Staging API Server
+  - url: https://api-dev.instabids.com/v1
+    description: Development API Server
+  - url: http://localhost:3000/v1
+    description: Local Development
+
+tags:
+  - name: Projects
+    description: Project creation and management operations
+  - name: Project Phases
+    description: Operations for managing project phases
+  - name: Milestones
+    description: Project milestone management operations
+  - name: Tasks
+    description: Project task management operations
+  - name: Materials
+    description: Project materials tracking and management
+  - name: Status Updates
+    description: Project status update operations
+  - name: Issues
+    description: Project issue tracking and resolution
+  - name: Schedules
+    description: Project scheduling operations
+  - name: Daily Logs
+    description: Project daily log operations
+  - name: Payments
+    description: Project payment schedule operations
+  - name: Inspections
+    description: Project inspection operations
+  - name: Change Orders
+    description: Project change order operations
+  - name: Contracts
+    description: Project contract operations
+  - name: Warranties
+    description: Project warranty operations
+
+paths:
+  #==========================================================================
+  # Project Endpoints
+  #==========================================================================
+  /projects:
+    get:
+      summary: List projects
+      description: |
+        Retrieves a list of projects based on specified filters. Results can be filtered by
+        status, contractor, homeowner, and other parameters. Pagination is supported.
+      operationId: listProjects
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Filter by project status
+          schema:
+            type: string
+            enum: [planning, scheduled, in_progress, on_hold, completed, cancelled, dispute]
+        - name: homeownerId
+          in: query
+          description: Filter by homeowner ID
+          schema:
+            type: string
+            format: uuid
+        - name: contractorId
+          in: query
+          description: Filter by contractor ID
+          schema:
+            type: string
+            format: uuid
+        - name: bidCardId
+          in: query
+          description: Filter by bid card ID
+          schema:
+            type: string
+            format: uuid
+        - name: isMultiPhase
+          in: query
+          description: Filter by multi-phase status
+          schema:
+            type: boolean
+        - name: projectHealth
+          in: query
+          description: Filter by project health status
+          schema:
+            type: string
+            enum: [on_track, at_risk, delayed, completed]
+        - name: startDateFrom
+          in: query
+          description: Filter by start date (from)
+          schema:
+            type: string
+            format: date
+        - name: startDateTo
+          in: query
+          description: Filter by start date (to)
+          schema:
+            type: string
+            format: date
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_desc, created_asc, start_date_asc, start_date_desc, budget_asc, budget_desc]
+            default: created_desc
+      responses:
+        '200':
+          description: List of projects retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    
+    post:
+      summary: Create a new project
+      description: |
+        Creates a new project based on an accepted bid. This converts the bidding process
+        into an active project for execution and tracking.
+      operationId: createProject
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Bid card or bid not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Bid already converted to project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /projects/{projectId}:
+    get:
+      summary: Get project details
+      description: |
+        Retrieves detailed information about a specific project, including
+        phases, milestones, tasks, and other related data.
+      operationId: getProject
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: includePhases
+          in: query
+          description: Include project phases
+          schema:
+            type: boolean
+            default: false
+        - name: includeMilestones
+          in: query
+          description: Include project milestones
+          schema:
+            type: boolean
+            default: false
+        - name: includeTasks
+          in: query
+          description: Include project tasks
+          schema:
+            type: boolean
+            default: false
+        - name: includeMaterials
+          in: query
+          description: Include project materials
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Project details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectWithDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      summary: Update a project
+      description: |
+        Updates an existing project. Partial updates are supported.
+      operationId: updateProject
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /projects/{projectId}/status:
+    put:
+      summary: Update project status
+      description: |
+        Updates the status of a project. This endpoint handles specific
+        status transitions like planning to in_progress, completing, or cancelling.
+      operationId: updateProjectStatus
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [planning, scheduled, in_progress, on_hold, completed, cancelled, dispute]
+                  description: New status for the project
+                reason:
+                  type: string
+                  description: Reason for the status change (required for cancellation, dispute, or hold)
+      responses:
+        '200':
+          description: Project status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /projects/{projectId}/health:
+    put:
+      summary: Update project health
+      description: |
+        Updates the health status of a project (on_track, at_risk, delayed, completed).
+      operationId: updateProjectHealth
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - health
+              properties:
+                health:
+                  type: string
+                  enum: [on_track, at_risk, delayed, completed]
+                  description: New health status for the project
+                reason:
+                  type: string
+                  description: Reason for the health status change
+      responses:
+        '200':
+          description: Project health updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /projects/{projectId}/rating:
+    post:
+      summary: Rate a completed project
+      description: |
+        Submits a rating for a completed project. Homeowners can rate contractors 
+        and contractors can rate homeowners once the project is completed.
+      operationId: rateProject
+      tags:
+        - Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rating
+                - comments
+              properties:
+                rating:
+                  type: number
+                  format: float
+                  minimum: 1
+                  maximum: 5
+                  description: Rating value (1-5)
+                comments:
+                  type: string
+                  description: Rating comments
+                privateComments:
+                  type: string
+                  description: Private comments (visible only to platform administrators)
+      responses:
+        '200':
+          description: Project rated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Project not completed or already rated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  #==========================================================================
+  # Project Phases Endpoints
+  #==========================================================================
+  /projects/{projectId}/phases:
+    get:
+      summary: List project phases
+      description: |
+        Retrieves a list of phases for a specific project.
+      operationId: listProjectPhases
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by phase status
+          schema:
+            type: string
+            enum: [not_started, in_progress, completed, on_hold]
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [phase_number_asc, phase_number_desc, start_date_asc, start_date_desc]
+            default: phase_number_asc
+      responses:
+        '200':
+          description: List of project phases retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectPhase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    post:
+      summary: Create a new project phase
+      description: |
+        Creates a new phase for a project.
+      operationId: createProjectPhase
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectPhaseCreate'
+      responses:
+        '201':
+          description: Project phase created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPhase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /projects/{projectId}/phases/{phaseId}:
+    get:
+      summary: Get project phase details
+      description: |
+        Retrieves detailed information about a specific project phase.
+      operationId: getProjectPhase
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: phaseId
+          in: path
+          required: true
+          description: The ID of the phase
+          schema:
+            type: string
+            format: uuid
+        - name: includeMilestones
+          in: query
+          description: Include phase milestones
+          schema:
+            type: boolean
+            default: false
+        - name: includeTasks
+          in: query
+          description: Include phase tasks
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Project phase details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPhaseWithDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      summary: Update a project phase
+      description: |
+        Updates an existing project phase. Partial updates are supported.
+      operationId: updateProjectPhase
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: phaseId
+          in: path
+          required: true
+          description: The ID of the phase
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectPhaseUpdate'
+      responses:
+        '200':
+          description: Project phase updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPhase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      summary: Delete a project phase
+      description: |
+        Deletes a project phase. Only phases with status 'not_started' can be deleted.
+      operationId: deleteProjectPhase
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: phaseId
+          in: path
+          required: true
+          description: The ID of the phase
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project phase deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete phase in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /projects/{projectId}/phases/{phaseId}/status:
+    put:
+      summary: Update project phase status
+      description: |
+        Updates the status of a project phase.
+      operationId: updateProjectPhaseStatus
+      tags:
+        - Project Phases
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: phaseId
+          in: path
+          required: true
+          description: The ID of the phase
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [not_started, in_progress, completed, on_hold]
+                  description: New status for the phase
+                reason:
+                  type: string
+                  description: Reason for the status change (required for on_hold)
+      responses:
+        '200':
+          description: Phase status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectPhase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  #==========================================================================
+  # Project Milestones Endpoints
+  #==========================================================================
+  /projects/{projectId}/milestones:
+    get:
+      summary: List project milestones
+      description: |
+        Retrieves a list of milestones for a specific project.
+      operationId: listProjectMilestones
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: phaseId
+          in: query
+          description: Filter by phase ID
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by milestone status
+          schema:
+            type: string
+            enum: [pending, in_progress, completed, delayed, cancelled]
+        - name: isPaymentTrigger
+          in: query
+          description: Filter by payment trigger flag
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [order_asc, order_desc, due_date_asc, due_date_desc]
+            default: order_asc
+      responses:
+        '200':
+          description: List of project milestones retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectMilestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    post:
+      summary: Create a new project milestone
+      description: |
+        Creates a new milestone for a project.
+      operationId: createProjectMilestone
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectMilestoneCreate'
+      responses:
+        '201':
+          description: Project milestone created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMilestone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /projects/{projectId}/milestones/{milestoneId}:
+    get:
+      summary: Get project milestone details
+      description: |
+        Retrieves detailed information about a specific project milestone.
+      operationId: getProjectMilestone
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: path
+          required: true
+          description: The ID of the milestone
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project milestone details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMilestone'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      summary: Update a project milestone
+      description: |
+        Updates an existing project milestone. Partial updates are supported.
+      operationId: updateProjectMilestone
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: path
+          required: true
+          description: The ID of the milestone
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectMilestoneUpdate'
+      responses:
+        '200':
+          description: Project milestone updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMilestone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      summary: Delete a project milestone
+      description: |
+        Deletes a project milestone. Only milestones with status 'pending' can be deleted.
+      operationId: deleteProjectMilestone
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: path
+          required: true
+          description: The ID of the milestone
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project milestone deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete milestone in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /projects/{projectId}/milestones/{milestoneId}/status:
+    put:
+      summary: Update project milestone status
+      description: |
+        Updates the status of a project milestone.
+      operationId: updateProjectMilestoneStatus
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: path
+          required: true
+          description: The ID of the milestone
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [pending, in_progress, completed, delayed, cancelled]
+                  description: New status for the milestone
+                reason:
+                  type: string
+                  description: Reason for the status change (required for delayed or cancelled)
+                verificationData:
+                  type: object
+                  description: Additional verification data if required for completion
+                  properties:
+                    method:
+                      type: string
+                      enum: [photo, inspection, self_report]
+                    result:
+                      type: string
+                      enum: [pass, fail, pending_fix]
+                    mediaUrls:
+                      type: array
+                      items:
+                        type: string
+                        format: uri
+                    notes:
+                      type: string
+      responses:
+        '200':
+          description: Milestone status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMilestone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /projects/{projectId}/milestones/{milestoneId}/media:
+    post:
+      summary: Add media to milestone
+      description: |
+        Adds media files to a project milestone.
+      operationId: addProjectMilestoneMedia
+      tags:
+        - Milestones
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: path
+          required: true
+          description: The ID of the milestone
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mediaUrls
+              properties:
+                mediaUrls:
+                  type: array
+                  items:
+                    type: string
+                    format: uri
+                  description: Array of media URLs
+      responses:
+        '200':
+          description: Media added to milestone successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectMilestone'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  #==========================================================================
+  # Project Tasks Endpoints
+  #==========================================================================
+  /projects/{projectId}/tasks:
+    get:
+      summary: List project tasks
+      description: |
+        Retrieves a list of tasks for a specific project.
+      operationId: listProjectTasks
+      tags:
+        - Tasks
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          description: The ID of the project
+          schema:
+            type: string
+            format

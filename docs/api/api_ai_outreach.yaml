@@ -1,0 +1,1165 @@
+openapi: 3.0.0
+info:
+  title: InstaBids AI Outreach & Automation API
+  description: |
+    API for the AI Outreach & Automation domain of InstaBids platform, providing
+    contractor discovery, outreach, and conversion capabilities.
+  version: 1.0.0
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: campaigns
+    description: Campaign management operations
+  - name: targetAudiences
+    description: Target audience management operations
+  - name: messageTemplates
+    description: Message template management operations
+  - name: prospects
+    description: Contractor prospect management operations
+  - name: outreach
+    description: Outreach message operations
+  - name: discovery
+    description: Contractor discovery operations
+  - name: aiContent
+    description: AI content generation operations
+  - name: analytics
+    description: Analytics and reporting operations
+
+paths:
+  #-----------------------
+  # CAMPAIGN ENDPOINTS
+  #-----------------------
+  /campaigns:
+    get:
+      summary: List campaigns
+      description: Retrieve a list of outreach campaigns based on various criteria
+      operationId: findCampaigns
+      tags:
+        - campaigns
+      parameters:
+        - name: status
+          in: query
+          description: Filter by campaign status
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [DRAFT, ACTIVE, PAUSED, COMPLETED, ARCHIVED]
+        - name: startDateFrom
+          in: query
+          description: Filter by start date (from)
+          schema:
+            type: string
+            format: date-time
+        - name: startDateTo
+          in: query
+          description: Filter by start date (to)
+          schema:
+            type: string
+            format: date-time
+        - name: endDateFrom
+          in: query
+          description: Filter by end date (from)
+          schema:
+            type: string
+            format: date-time
+        - name: endDateTo
+          in: query
+          description: Filter by end date (to)
+          schema:
+            type: string
+            format: date-time
+        - name: targetAudienceId
+          in: query
+          description: Filter by target audience ID
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          description: Search term for campaign name or description
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [name, status, startDate, endDate, createdAt]
+            default: createdAt
+        - name: sortDirection
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Successfully retrieved campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCampaigns'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create campaign
+      description: Create a new outreach campaign
+      operationId: createCampaign
+      tags:
+        - campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignCreate'
+      responses:
+        '201':
+          description: Campaign created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /campaigns/{campaignId}:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        description: ID of the campaign
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get campaign
+      description: Retrieve detailed information about a specific campaign
+      operationId: getCampaign
+      tags:
+        - campaigns
+      responses:
+        '200':
+          description: Successfully retrieved campaign
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update campaign
+      description: Update an existing campaign
+      operationId: updateCampaign
+      tags:
+        - campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignUpdate'
+      responses:
+        '200':
+          description: Campaign updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete campaign
+      description: Delete a campaign and all related data
+      operationId: deleteCampaign
+      tags:
+        - campaigns
+      responses:
+        '204':
+          description: Campaign deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete active campaign
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /campaigns/{campaignId}/status:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        description: ID of the campaign
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Change campaign status
+      description: Update the status of a campaign
+      operationId: changeCampaignStatus
+      tags:
+        - campaigns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [DRAFT, ACTIVE, PAUSED, COMPLETED, ARCHIVED]
+      responses:
+        '200':
+          description: Campaign status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Campaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /campaigns/{campaignId}/metrics:
+    parameters:
+      - name: campaignId
+        in: path
+        required: true
+        description: ID of the campaign
+        schema:
+          type: string
+          format: uuid
+      - name: startDate
+        in: query
+        description: Start date for metrics period
+        schema:
+          type: string
+          format: date-time
+      - name: endDate
+        in: query
+        description: End date for metrics period
+        schema:
+          type: string
+          format: date-time
+    get:
+      summary: Get campaign metrics
+      description: Retrieve performance metrics for a campaign
+      operationId: getCampaignMetrics
+      tags:
+        - campaigns
+        - analytics
+      responses:
+        '200':
+          description: Successfully retrieved campaign metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignPerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-----------------------
+  # TARGET AUDIENCE ENDPOINTS
+  #-----------------------
+  /target-audiences:
+    get:
+      summary: List target audiences
+      description: Retrieve a list of all target audiences
+      operationId: findTargetAudiences
+      tags:
+        - targetAudiences
+      parameters:
+        - name: search
+          in: query
+          description: Search term for audience name
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successfully retrieved target audiences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TargetAudience'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create target audience
+      description: Create a new target audience definition
+      operationId: createTargetAudience
+      tags:
+        - targetAudiences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetAudienceCreate'
+      responses:
+        '201':
+          description: Target audience created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetAudience'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /target-audiences/{audienceId}:
+    parameters:
+      - name: audienceId
+        in: path
+        required: true
+        description: ID of the target audience
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get target audience
+      description: Retrieve detailed information about a specific target audience
+      operationId: getTargetAudience
+      tags:
+        - targetAudiences
+      responses:
+        '200':
+          description: Successfully retrieved target audience
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetAudience'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update target audience
+      description: Update an existing target audience
+      operationId: updateTargetAudience
+      tags:
+        - targetAudiences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetAudienceUpdate'
+      responses:
+        '200':
+          description: Target audience updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetAudience'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete target audience
+      description: Delete a target audience
+      operationId: deleteTargetAudience
+      tags:
+        - targetAudiences
+      responses:
+        '204':
+          description: Target audience deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete audience currently in use by campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /target-audiences/estimate-size:
+    post:
+      summary: Estimate audience size
+      description: Estimate the size of a target audience based on criteria
+      operationId: estimateAudienceSize
+      tags:
+        - targetAudiences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TargetCriteria'
+      responses:
+        '200':
+          description: Successfully estimated audience size
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AudienceSizeEstimate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  #-----------------------
+  # MESSAGE TEMPLATE ENDPOINTS
+  #-----------------------
+  /message-templates:
+    get:
+      summary: List message templates
+      description: Retrieve a list of message templates
+      operationId: findTemplates
+      tags:
+        - messageTemplates
+      parameters:
+        - name: contentType
+          in: query
+          description: Filter by content type
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [EMAIL, SMS, PUSH, IN_APP]
+        - name: search
+          in: query
+          description: Search term for template name or content
+          schema:
+            type: string
+        - name: createdAfter
+          in: query
+          description: Filter by creation date (after)
+          schema:
+            type: string
+            format: date-time
+        - name: createdBefore
+          in: query
+          description: Filter by creation date (before)
+          schema:
+            type: string
+            format: date-time
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [name, contentType, createdAt]
+            default: createdAt
+        - name: sortDirection
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Successfully retrieved message templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MessageTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create message template
+      description: Create a new message template
+      operationId: createTemplate
+      tags:
+        - messageTemplates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageTemplateCreate'
+      responses:
+        '201':
+          description: Message template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /message-templates/{templateId}:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        description: ID of the message template
+        schema:
+          type: string
+          format: uuid
+      - name: includeVersions
+        in: query
+        description: Include template versions in the response
+        schema:
+          type: boolean
+          default: false
+    get:
+      summary: Get message template
+      description: Retrieve detailed information about a specific message template
+      operationId: getTemplate
+      tags:
+        - messageTemplates
+      responses:
+        '200':
+          description: Successfully retrieved message template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update message template
+      description: Update an existing message template
+      operationId: updateTemplate
+      tags:
+        - messageTemplates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageTemplateUpdate'
+      responses:
+        '200':
+          description: Message template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete message template
+      description: Delete a message template
+      operationId: deleteTemplate
+      tags:
+        - messageTemplates
+      responses:
+        '204':
+          description: Message template deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete template currently in use by campaigns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /message-templates/{templateId}/versions:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        description: ID of the message template
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Create template version
+      description: Create a new version of an existing template
+      operationId: createTemplateVersion
+      tags:
+        - messageTemplates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateVersionCreate'
+      responses:
+        '201':
+          description: Template version created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-templates/{templateId}/versions/{versionNumber}:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        description: ID of the message template
+        schema:
+          type: string
+          format: uuid
+      - name: versionNumber
+        in: path
+        required: true
+        description: Template version number
+        schema:
+          type: integer
+          minimum: 1
+    get:
+      summary: Get template version
+      description: Retrieve a specific version of a message template
+      operationId: getTemplateVersion
+      tags:
+        - messageTemplates
+      responses:
+        '200':
+          description: Successfully retrieved template version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageTemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /message-templates/{templateId}/preview:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        description: ID of the message template
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Preview personalized template
+      description: Generate a preview of a personalized message for a specific prospect
+      operationId: previewPersonalization
+      tags:
+        - messageTemplates
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                prospectData:
+                  type: object
+                  additionalProperties: true
+                  description: Prospect data for personalization
+              required:
+                - prospectData
+      responses:
+        '200':
+          description: Successfully generated personalized preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalizationPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-templates/{templateId}/performance:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        description: ID of the message template
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get template performance
+      description: Retrieve performance metrics for a message template
+      operationId: getTemplatePerformance
+      tags:
+        - messageTemplates
+        - analytics
+      responses:
+        '200':
+          description: Successfully retrieved template performance metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplatePerformance'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-----------------------
+  # PROSPECT ENDPOINTS
+  #-----------------------
+  /prospects:
+    get:
+      summary: List prospects
+      description: Retrieve a list of contractor prospects based on various criteria
+      operationId: findProspects
+      tags:
+        - prospects
+      parameters:
+        - name: status
+          in: query
+          description: Filter by prospect status
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [NEW, VERIFIED, CONTACTED, RESPONDED, CONVERTED, REJECTED, INVALID]
+        - name: source
+          in: query
+          description: Filter by prospect source
+          schema:
+            type: array
+            items:
+              type: string
+        - name: specialties
+          in: query
+          description: Filter by contractor specialties
+          schema:
+            type: array
+            items:
+              type: string
+        - name: qualityScoreMin
+          in: query
+          description: Minimum quality score
+          schema:
+            type: number
+            minimum: 0
+            maximum: 100
+        - name: qualityScoreMax
+          in: query
+          description: Maximum quality score
+          schema:
+            type: number
+            minimum: 0
+            maximum: 100
+        - name: city
+          in: query
+          description: Filter by city
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: Filter by state
+          schema:
+            type: string
+        - name: postalCode
+          in: query
+          description: Filter by postal code
+          schema:
+            type: string
+        - name: discoveredAfter
+          in: query
+          description: Filter by discovery date (after)
+          schema:
+            type: string
+            format: date-time
+        - name: discoveredBefore
+          in: query
+          description: Filter by discovery date (before)
+          schema:
+            type: string
+            format: date-time
+        - name: tags
+          in: query
+          description: Filter by tags
+          schema:
+            type: array
+            items:
+              type: string
+        - name: search
+          in: query
+          description: Search term for prospect name, company, or email
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: sortBy
+          in: query
+          description: Field to sort by
+          schema:
+            type: string
+            enum: [companyName, discoveryDate, qualityScore, status]
+            default: discoveryDate
+        - name: sortDirection
+          in: query
+          description: Sort direction
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        '200':
+          description: Successfully retrieved prospects
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProspects'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create prospect
+      description: Create a new contractor prospect
+      operationId: createProspect
+      tags:
+        - prospects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProspectCreate'
+      responses:
+        '201':
+          description: Prospect created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorProspect'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Prospect already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /prospects/{prospectId}:
+    parameters:
+      - name: prospectId
+        in: path
+        required: true
+        description: ID of the prospect
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get prospect
+      description: Retrieve detailed information about a specific prospect
+      operationId: getProspect
+      tags:
+        - prospects
+      responses:
+        '200':
+          description: Successfully retrieved prospect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorProspect'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update prospect
+      description: Update an existing prospect
+      operationId: updateProspect
+      tags:
+        - prospects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProspectUpdate'
+      responses:
+        '200':
+          description: Prospect updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorProspect'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete prospect
+      description: Delete a prospect
+      operationId: deleteProspect
+      tags:
+        - prospects
+      responses:
+        '204':
+          description: Prospect deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete prospect with active communications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /prospects/{prospectId}/status:
+    parameters:
+      - name: prospectId
+        in: path
+        required: true
+        description: ID of the prospect
+        schema:
+          type: string
+          format: uuid
+    put:
+      summary: Change prospect status
+      description: Update the status of a prospect
+      operationId: changeProspectStatus
+      tags:
+        - prospects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [NEW, VERIFIED, CONTACTED, RESPONDED, CONVERTED, REJECTED, INVALID]
+              required:
+                - status
+      responses:
+        '200':
+          description: Prospect status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorProspect'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /prospects/{prospectId}/enrich:
+    parameters:
+      - name: prospectId
+        in: path
+        required: true
+        description: ID of the prospect
+        schema:
+          type: string
+          format: uuid
+    post:
+      summary: Enrich prospect data
+      description: Enrich prospect with additional data from external sources
+      operationId: enrichProspect
+      tags:
+        - prospects
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sources:
+                  type: array
+                  items:
+                    type: string
+                  description: Optional list of data sources to use for enrichment
+      responses:
+        '200':
+          description: Prospect enriched successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractorProspect'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Too many enrichment requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /prospects/{prospectId}/outreach-history:
+    parameters:
+      - name: prospectId
+        in: path
+        required: true
+        description: ID of the prospect
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get prospect outreach history
+      description: Retrieve all outreach messages sent to a prospect
+      operationId: getProspectOutreachHistory
+      tags:
+        - prospects
+        - outreach
+      responses:
+        '200':
+          description: Successfully retrieved outreach history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutreachMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /prospects/{prospectId}/response-history:
+    parameters:
+      - name: prospectId
+        in: path
+        required: true
+        description: ID of the prospect
+        schema:
+          type: string
+          format: uuid
+    get:
+      summary: Get prospect response history
+      description: Retrieve all responses received from a prospect
+      operationId: getProspectResponseHistory
+      tags:
+        - prospects
+        - outreach
+      responses:
+        '200':
+          description: Successfully retrieved response history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProspectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /prospects/conversions:
+    post:
+      summary: Track prospect conversion
+      description: Record a prospect conversion to registered user
+      operationId: trackConversion
+      tags:
+        - prospects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversionCreate'
+      responses:
+        '201':
+          description: Conversion tracked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProspectConversion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Prospect or User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  #-----------------------
+  # OUTREACH ENDPOINTS
+  #-----------------------
+  /outreach/messages:
+    get:
+      summary: List outreach messages

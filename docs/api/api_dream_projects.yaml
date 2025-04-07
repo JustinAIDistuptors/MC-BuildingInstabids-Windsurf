@@ -1,0 +1,1104 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Dream Projects & Conversion API
+  description: |
+    API for the InstaBids Dream Projects & Conversion domain. This API enables users to create, manage,
+    and convert aspirational home improvement projects (Dream Projects) into actual bidding-ready projects.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: Dream Projects
+    description: Operations for managing dream projects
+  - name: Dream Project Images
+    description: Operations for managing images associated with dream projects
+  - name: Dream Project Features
+    description: Operations for managing features/requirements of dream projects
+  - name: Dream Project Inspirations
+    description: Operations for managing inspirational references for dream projects
+  - name: Dream Project Collaboration
+    description: Operations for sharing and collaborating on dream projects
+  - name: Dream Project Conversion
+    description: Operations for converting dream projects into actual projects
+  - name: Dream Project Templates
+    description: Operations for managing templates for common project types
+  - name: Dream Project Analytics
+    description: Operations for analytics related to dream projects and conversions
+
+paths:
+  #-------------------------------------------------------------------------
+  # Dream Projects
+  #-------------------------------------------------------------------------
+  /dream-projects:
+    get:
+      summary: List dream projects
+      description: Retrieves a list of dream projects for the authenticated user.
+      operationId: listDreamProjects
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: status
+          in: query
+          description: Filter by project status
+          schema:
+            type: string
+            enum: [draft, published, converted, archived]
+        - name: isPublic
+          in: query
+          description: Filter by public visibility
+          schema:
+            type: boolean
+        - name: roomType
+          in: query
+          description: Filter by room type
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of dream projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DreamProject'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create a dream project
+      description: Creates a new dream project for the authenticated user.
+      operationId: createDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  description: Title of the dream project
+                  example: "Kitchen Renovation"
+                description:
+                  type: string
+                  description: Detailed description of the dream project
+                  example: "Complete renovation of kitchen with new cabinets, countertops, and appliances"
+                budgetMin:
+                  type: number
+                  format: float
+                  description: Minimum budget estimate
+                  example: 10000.00
+                budgetMax:
+                  type: number
+                  format: float
+                  description: Maximum budget estimate
+                  example: 15000.00
+                desiredStartDate:
+                  type: string
+                  format: date
+                  description: Desired project start date
+                propertyId:
+                  type: string
+                  format: uuid
+                  description: ID of the property where the project will be implemented
+                roomType:
+                  type: string
+                  description: Type of room for the project
+                  example: "Kitchen"
+                projectSize:
+                  type: string
+                  enum: [small, medium, large, custom]
+                  description: Size classification of the project
+                isPublic:
+                  type: boolean
+                  description: Whether the dream project is publicly visible
+                  default: false
+                templateId:
+                  type: string
+                  format: uuid
+                  description: ID of the template to use, if any
+      responses:
+        '201':
+          description: The dream project was created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /dream-projects/{dreamProjectId}:
+    get:
+      summary: Get dream project details
+      description: Retrieves detailed information about a specific dream project.
+      operationId: getDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: includeImages
+          in: query
+          description: Whether to include image details
+          schema:
+            type: boolean
+            default: false
+        - name: includeFeatures
+          in: query
+          description: Whether to include feature details
+          schema:
+            type: boolean
+            default: false
+        - name: includeInspirations
+          in: query
+          description: Whether to include inspiration details
+          schema:
+            type: boolean
+            default: false
+        - name: includeCollaborators
+          in: query
+          description: Whether to include collaborator details
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Detailed information about the dream project
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update dream project
+      description: Updates details of a dream project. Only the owner or collaborators with edit permission can perform this operation.
+      operationId: updateDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: Title of the dream project
+                description:
+                  type: string
+                  description: Detailed description of the dream project
+                budgetMin:
+                  type: number
+                  format: float
+                  description: Minimum budget estimate
+                budgetMax:
+                  type: number
+                  format: float
+                  description: Maximum budget estimate
+                desiredStartDate:
+                  type: string
+                  format: date
+                  description: Desired project start date
+                desiredCompletionDate:
+                  type: string
+                  format: date
+                  description: Desired project completion date
+                propertyId:
+                  type: string
+                  format: uuid
+                  description: ID of the property where the project will be implemented
+                roomType:
+                  type: string
+                  description: Type of room for the project
+                projectSize:
+                  type: string
+                  enum: [small, medium, large, custom]
+                  description: Size classification of the project
+                isPublic:
+                  type: boolean
+                  description: Whether the dream project is publicly visible
+                status:
+                  type: string
+                  enum: [draft, published, archived]
+                  description: Status of the dream project
+      responses:
+        '200':
+          description: The dream project was updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete dream project
+      description: Deletes a dream project. Only the owner can perform this operation.
+      operationId: deleteDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The dream project was deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /dream-projects/{dreamProjectId}/publish:
+    post:
+      summary: Publish dream project
+      description: Changes a dream project's status from draft to published.
+      operationId: publishDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The dream project was published successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: The dream project cannot be published
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Dream project is missing required information to publish"
+                  missingFields:
+                    type: array
+                    items:
+                      type: string
+                    example: ["budget", "desiredStartDate", "images"]
+
+  /dream-projects/{dreamProjectId}/archive:
+    post:
+      summary: Archive dream project
+      description: Archives a dream project.
+      operationId: archiveDreamProject
+      tags:
+        - Dream Projects
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The dream project was archived successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Dream Project Images
+  #-------------------------------------------------------------------------
+  /dream-projects/{dreamProjectId}/images:
+    get:
+      summary: List dream project images
+      description: Retrieves a list of images associated with a dream project.
+      operationId: listDreamProjectImages
+      tags:
+        - Dream Project Images
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: A list of dream project images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DreamProjectImage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Upload dream project image
+      description: Uploads a new image for a dream project.
+      operationId: uploadDreamProjectImage
+      tags:
+        - Dream Project Images
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file to upload
+                caption:
+                  type: string
+                  description: Caption for the image
+                isPrimary:
+                  type: boolean
+                  description: Whether this image should be the primary image
+                  default: false
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the image
+                  default: 0
+      responses:
+        '201':
+          description: The image was uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Request entity too large
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "File exceeds maximum allowed size"
+
+  /dream-projects/{dreamProjectId}/images/{imageId}:
+    get:
+      summary: Get dream project image
+      description: Retrieves information about a specific image associated with a dream project.
+      operationId: getDreamProjectImage
+      tags:
+        - Dream Project Images
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: imageId
+          in: path
+          description: ID of the image
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Information about the dream project image
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectImage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update dream project image
+      description: Updates information about a specific image associated with a dream project.
+      operationId: updateDreamProjectImage
+      tags:
+        - Dream Project Images
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: imageId
+          in: path
+          description: ID of the image
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                caption:
+                  type: string
+                  description: Caption for the image
+                isPrimary:
+                  type: boolean
+                  description: Whether this image should be the primary image
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the image
+      responses:
+        '200':
+          description: The image was updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete dream project image
+      description: Deletes a specific image associated with a dream project.
+      operationId: deleteDreamProjectImage
+      tags:
+        - Dream Project Images
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: imageId
+          in: path
+          description: ID of the image
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The image was deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Dream Project Features
+  #-------------------------------------------------------------------------
+  /dream-projects/{dreamProjectId}/features:
+    get:
+      summary: List dream project features
+      description: Retrieves a list of features associated with a dream project.
+      operationId: listDreamProjectFeatures
+      tags:
+        - Dream Project Features
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: featureType
+          in: query
+          description: Filter by feature type
+          schema:
+            type: string
+            enum: [must_have, nice_to_have, avoid]
+      responses:
+        '200':
+          description: A list of dream project features
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DreamProjectFeature'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Add dream project feature
+      description: Adds a new feature to a dream project.
+      operationId: addDreamProjectFeature
+      tags:
+        - Dream Project Features
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - featureType
+                - description
+              properties:
+                featureType:
+                  type: string
+                  enum: [must_have, nice_to_have, avoid]
+                  description: Type of feature
+                description:
+                  type: string
+                  description: Description of the feature
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the feature
+                  default: 0
+      responses:
+        '201':
+          description: The feature was added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectFeature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /dream-projects/{dreamProjectId}/features/{featureId}:
+    patch:
+      summary: Update dream project feature
+      description: Updates a specific feature associated with a dream project.
+      operationId: updateDreamProjectFeature
+      tags:
+        - Dream Project Features
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: featureId
+          in: path
+          description: ID of the feature
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                featureType:
+                  type: string
+                  enum: [must_have, nice_to_have, avoid]
+                  description: Type of feature
+                description:
+                  type: string
+                  description: Description of the feature
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the feature
+      responses:
+        '200':
+          description: The feature was updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectFeature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete dream project feature
+      description: Deletes a specific feature associated with a dream project.
+      operationId: deleteDreamProjectFeature
+      tags:
+        - Dream Project Features
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: featureId
+          in: path
+          description: ID of the feature
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The feature was deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Dream Project Inspirations
+  #-------------------------------------------------------------------------
+  /dream-projects/{dreamProjectId}/inspirations:
+    get:
+      summary: List dream project inspirations
+      description: Retrieves a list of inspirations associated with a dream project.
+      operationId: listDreamProjectInspirations
+      tags:
+        - Dream Project Inspirations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inspirationType
+          in: query
+          description: Filter by inspiration type
+          schema:
+            type: string
+            enum: [image, url, project, product, note]
+      responses:
+        '200':
+          description: A list of dream project inspirations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DreamProjectInspiration'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Add dream project inspiration
+      description: Adds a new inspiration to a dream project.
+      operationId: addDreamProjectInspiration
+      tags:
+        - Dream Project Inspirations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - inspirationType
+              properties:
+                inspirationType:
+                  type: string
+                  enum: [image, url, project, product, note]
+                  description: Type of inspiration
+                title:
+                  type: string
+                  description: Title of the inspiration
+                description:
+                  type: string
+                  description: Description of the inspiration
+                externalUrl:
+                  type: string
+                  format: uri
+                  description: URL to external inspiration source
+                storagePath:
+                  type: string
+                  description: Path to stored inspiration content
+                referenceId:
+                  type: string
+                  format: uuid
+                  description: ID of referenced entity
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the inspiration
+                  default: 0
+                metadata:
+                  type: object
+                  description: Additional metadata about the inspiration
+      responses:
+        '201':
+          description: The inspiration was added successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectInspiration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /dream-projects/{dreamProjectId}/inspirations/{inspirationId}:
+    patch:
+      summary: Update dream project inspiration
+      description: Updates a specific inspiration associated with a dream project.
+      operationId: updateDreamProjectInspiration
+      tags:
+        - Dream Project Inspirations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inspirationId
+          in: path
+          description: ID of the inspiration
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: Title of the inspiration
+                description:
+                  type: string
+                  description: Description of the inspiration
+                externalUrl:
+                  type: string
+                  format: uri
+                  description: URL to external inspiration source
+                sortOrder:
+                  type: integer
+                  description: Order in which to display the inspiration
+                metadata:
+                  type: object
+                  description: Additional metadata about the inspiration
+      responses:
+        '200':
+          description: The inspiration was updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DreamProjectInspiration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete dream project inspiration
+      description: Deletes a specific inspiration associated with a dream project.
+      operationId: deleteDreamProjectInspiration
+      tags:
+        - Dream Project Inspirations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: dreamProjectId
+          in: path
+          description: ID of the dream project
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: inspirationId
+          in: path
+          description: ID of the inspiration
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The inspiration was deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

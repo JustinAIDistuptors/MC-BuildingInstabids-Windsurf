@@ -1,0 +1,1914 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Labor Marketplace API
+  description: |
+    API for the InstaBids Labor Marketplace, supporting both Consumer-to-Helper (C2H) 
+    and Contractor-to-Helper (B2H) models for on-demand labor assistance.
+  version: '1.0.0'
+  contact:
+    name: InstaBids Support
+    email: support@instabids.com
+    url: https://instabids.com/support
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production API
+  - url: https://staging-api.instabids.com/v1
+    description: Staging API
+  - url: https://dev-api.instabids.com/v1
+    description: Development API
+
+tags:
+  - name: Helper Profiles
+    description: Helper profile management endpoints
+  - name: Skills & Certifications
+    description: Endpoints for managing helper skills and certifications
+  - name: Availability
+    description: Helper availability management endpoints
+  - name: Job Posts
+    description: Endpoints for creating and managing labor job posts
+  - name: Job Applications
+    description: Endpoints for applying to and managing applications to jobs
+  - name: Assignments
+    description: Endpoints for managing labor assignments and work tracking
+  - name: Reviews & Ratings
+    description: Endpoints for submitting and retrieving reviews and ratings
+  - name: Teams
+    description: Endpoints for managing labor teams
+  - name: Disputes
+    description: Endpoints for handling disputes between helpers and clients
+  - name: Verification
+    description: Endpoints for identity and skill verification processes
+  - name: Search
+    description: Endpoints for searching and recommending helpers and jobs
+  - name: Analytics
+    description: Analytics endpoints for helper and client performance metrics
+
+paths:
+  #
+  # Helper Profile Endpoints
+  #
+  /labor/helpers:
+    post:
+      summary: Create a new helper profile
+      description: Creates a new helper profile for an existing user
+      tags:
+        - Helper Profiles
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHelperProfileRequest'
+      responses:
+        '201':
+          description: Helper profile created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborHelper'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Helper profile already exists for this user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: List helper profiles
+      description: Returns a list of helper profiles based on specified filters
+      tags:
+        - Helper Profiles
+        - Search
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - name: status
+          in: query
+          description: Filter helpers by profile status
+          schema:
+            type: string
+            enum: [pending_verification, verified, suspended, inactive, active]
+        - name: verificationLevel
+          in: query
+          description: Filter helpers by verification level
+          schema:
+            type: string
+            enum: [basic, identity_verified, background_checked, fully_verified]
+        - name: skillIds
+          in: query
+          description: Filter helpers that have any of these skills
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: skillCategoryIds
+          in: query
+          description: Filter helpers that have skills in any of these categories
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: zip
+          in: query
+          description: Filter helpers near this zip code
+          schema:
+            type: string
+        - name: radius
+          in: query
+          description: Radius in miles from the zip code
+          schema:
+            type: number
+            format: double
+            minimum: 1
+            maximum: 100
+        - name: minRating
+          in: query
+          description: Filter helpers with at least this overall rating
+          schema:
+            type: number
+            format: double
+            minimum: 0
+            maximum: 5
+        - name: hasTransportation
+          in: query
+          description: Filter helpers who have transportation
+          schema:
+            type: boolean
+        - name: hasTools
+          in: query
+          description: Filter helpers who have their own tools
+          schema:
+            type: boolean
+        - name: badgeIds
+          in: query
+          description: Filter helpers who have earned any of these badges
+          schema:
+            type: array
+            items:
+              type: string
+              format: uuid
+        - name: availableDate
+          in: query
+          description: Filter helpers available on this date (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: availableStartTime
+          in: query
+          description: Filter helpers available from this time (HH:MM:SS)
+          schema:
+            type: string
+            format: time
+        - name: availableEndTime
+          in: query
+          description: Filter helpers available until this time (HH:MM:SS)
+          schema:
+            type: string
+            format: time
+        - name: availableDayOfWeek
+          in: query
+          description: Filter helpers available on this day (0=Sunday, 6=Saturday)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 6
+        - name: minHourlyRate
+          in: query
+          description: Filter helpers with an hourly rate min at least this amount
+          schema:
+            type: number
+            format: double
+        - name: maxHourlyRate
+          in: query
+          description: Filter helpers with an hourly rate max at most this amount
+          schema:
+            type: number
+            format: double
+        - name: sort
+          in: query
+          description: Sort options
+          schema:
+            type: string
+            enum: [rating_desc, rating_asc, hourly_rate_asc, hourly_rate_desc, created_at_desc, created_at_asc]
+      responses:
+        '200':
+          description: List of helper profiles matching the filters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LaborHelper'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /labor/helpers/{helperId}:
+    get:
+      summary: Get a helper profile
+      description: Retrieves a specific helper profile by ID
+      tags:
+        - Helper Profiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper to retrieve
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Helper profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborHelper'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a helper profile
+      description: Updates an existing helper profile
+      tags:
+        - Helper Profiles
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateHelperProfileRequest'
+      responses:
+        '200':
+          description: Helper profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborHelper'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/verify/identity:
+    post:
+      summary: Verify a helper's identity
+      description: Mark a helper's identity as verified
+      tags:
+        - Helper Profiles
+        - Verification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper to verify
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Helper identity verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborHelper'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/background-check:
+    post:
+      summary: Initiate a background check
+      description: Start the background check process for a helper
+      tags:
+        - Helper Profiles
+        - Verification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper to check
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Background check initiated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkId:
+                    type: string
+                  redirectUrl:
+                    type: string
+                    format: uri
+                    description: URL to redirect the user to for the background check process
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/analytics:
+    get:
+      summary: Get helper analytics
+      description: Retrieves performance analytics for a helper
+      tags:
+        - Helper Profiles
+        - Analytics
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          description: Start date for analytics period (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: End date for analytics period (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Helper analytics data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperAnalytics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #
+  # Skills and Certifications Endpoints
+  #
+  /labor/helpers/{helperId}/skills:
+    post:
+      summary: Add a skill to a helper
+      description: Adds a new skill to a helper's profile
+      tags:
+        - Skills & Certifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHelperSkillRequest'
+      responses:
+        '201':
+          description: Skill added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperSkill'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Skill already exists for this helper
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: List helper skills
+      description: Retrieves all skills for a helper
+      tags:
+        - Skills & Certifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of helper skills
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HelperSkill'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/skills/{skillId}/verify:
+    post:
+      summary: Verify a helper's skill
+      description: Mark a helper's skill as verified
+      tags:
+        - Skills & Certifications
+        - Verification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: skillId
+          in: path
+          description: ID of the skill to verify
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                verificationNote:
+                  type: string
+                  description: Optional note about the verification
+      responses:
+        '200':
+          description: Skill verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperSkill'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/certifications:
+    post:
+      summary: Add a certification to a helper
+      description: Adds a new certification to a helper's profile
+      tags:
+        - Skills & Certifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHelperCertificationRequest'
+      responses:
+        '201':
+          description: Certification added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperCertification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: List helper certifications
+      description: Retrieves all certifications for a helper
+      tags:
+        - Skills & Certifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of helper certifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HelperCertification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/certifications/{certificationId}/verify:
+    post:
+      summary: Verify a helper's certification
+      description: Mark a helper's certification as verified
+      tags:
+        - Skills & Certifications
+        - Verification
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: certificationId
+          in: path
+          description: ID of the certification to verify
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Certification verified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperCertification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #
+  # Availability Endpoints
+  #
+  /labor/helpers/{helperId}/availability:
+    post:
+      summary: Set helper availability
+      description: Sets the weekly availability schedule for a helper
+      tags:
+        - Availability
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CreateHelperAvailabilityRequest'
+                  description: Array of availability slots (replaces all existing ones)
+      responses:
+        '200':
+          description: Availability set successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HelperAvailability'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: Get helper availability
+      description: Retrieves the weekly availability schedule for a helper
+      tags:
+        - Availability
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Helper availability slots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HelperAvailability'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/unavailable-dates:
+    post:
+      summary: Add unavailable dates
+      description: Adds specific dates when the helper is unavailable
+      tags:
+        - Availability
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHelperUnavailableDateRequest'
+      responses:
+        '201':
+          description: Unavailable dates added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HelperUnavailableDate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: Get unavailable dates
+      description: Retrieves all unavailable dates for a helper
+      tags:
+        - Availability
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          description: Start date range for unavailable dates (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          description: End date range for unavailable dates (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Helper unavailable dates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HelperUnavailableDate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/helpers/{helperId}/availability-status:
+    patch:
+      summary: Update availability status
+      description: Updates the real-time availability status of a helper
+      tags:
+        - Availability
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: helperId
+          in: path
+          description: ID of the helper
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [available, busy, unavailable, vacation]
+                  description: New availability status
+      responses:
+        '200':
+          description: Availability status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborHelper'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #
+  # Job Posts Endpoints
+  #
+  /labor/job-posts:
+    post:
+      summary: Create a job post
+      description: Creates a new labor job post
+      tags:
+        - Job Posts
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLaborJobPostRequest'
+      responses:
+        '201':
+          description: Job post created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobPost'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      summary: List job posts
+      description: Retrieves a list of labor job posts based on filters
+      tags:
+        - Job Posts
+        - Search
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+            enum: [draft, open, in_progress, filled, canceled, completed, expired]
+        - name: creatorId
+          in: query
+          description: Filter by creator ID
+          schema:
+            type: string
+            format: uuid
+        - name: creatorType
+          in: query
+          description: Filter by creator type
+          schema:
+            type: string
+            enum: [homeowner, contractor]
+        - name: projectId
+          in: query
+          description: Filter by associated project ID
+          schema:
+            type: string
+            format: uuid
+        - name: jobType
+          in: query
+          description: Filter by job type
+          schema:
+            type: string
+            enum: [one_time, recurring, multi_day, project_based]
+        - name: payType
+          in: query
+          description: Filter by payment type
+          schema:
+            type: string
+            enum: [hourly, fixed, daily]
+        - name: minPayRate
+          in: query
+          description: Filter by minimum pay rate
+          schema:
+            type: number
+            format: double
+        - name: maxPayRate
+          in: query
+          description: Filter by maximum pay rate
+          schema:
+            type: number
+            format: double
+        - name: zipCode
+          in: query
+          description: Filter by zip code
+          schema:
+            type: string
+        - name: radius
+          in: query
+          description: Radius in miles from zip code
+          schema:
+            type: number
+            format: double
+        - name: startDateFrom
+          in: query
+          description: Filter by start date from (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: startDateTo
+          in: query
+          description: Filter by start date to (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: skillCategoryId
+          in: query
+          description: Filter by skill category
+          schema:
+            type: string
+            format: uuid
+        - name: requiredVerificationLevel
+          in: query
+          description: Filter by required verification level
+          schema:
+            type: string
+            enum: [basic, identity_verified, background_checked, fully_verified]
+        - name: urgencyLevel
+          in: query
+          description: Filter by urgency level
+          schema:
+            type: string
+            enum: [low, medium, high, emergency]
+        - name: sort
+          in: query
+          description: Sort options
+          schema:
+            type: string
+            enum: [created_at_desc, created_at_asc, pay_rate_desc, pay_rate_asc, start_date_asc, start_date_desc]
+      responses:
+        '200':
+          description: List of job posts matching the filters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LaborJobPost'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /labor/job-posts/{jobPostId}:
+    get:
+      summary: Get a job post
+      description: Retrieves a specific job post by ID
+      tags:
+        - Job Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post to retrieve
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job post details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobPost'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a job post
+      description: Updates an existing job post
+      tags:
+        - Job Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post to update
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLaborJobPostRequest'
+      responses:
+        '200':
+          description: Job post updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobPost'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/job-posts/{jobPostId}/requirements:
+    post:
+      summary: Add a job requirement
+      description: Adds a specific requirement to a job post
+      tags:
+        - Job Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateJobSpecificRequirementRequest'
+      responses:
+        '201':
+          description: Requirement added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobSpecificRequirement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/job-posts/{jobPostId}/cancel:
+    post:
+      summary: Cancel a job post
+      description: Cancels an existing job post
+      tags:
+        - Job Posts
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post to cancel
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  description: Reason for cancellation
+      responses:
+        '200':
+          description: Job post canceled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobPost'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #
+  # Job Applications Endpoints
+  #
+  /labor/job-posts/{jobPostId}/applications:
+    post:
+      summary: Apply to a job
+      description: Submits an application for a labor job
+      tags:
+        - Job Applications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLaborJobApplicationRequest'
+      responses:
+        '201':
+          description: Application submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobApplication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Already applied to this job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      summary: List applications for a job
+      description: Retrieves all applications for a specific job post
+      tags:
+        - Job Applications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+        - name: status
+          in: query
+          description: Filter by application status
+          schema:
+            type: string
+            enum: [submitted, viewed, shortlisted, rejected, hired, withdrawn]
+        - name: sort
+          in: query
+          description: Sort options
+          schema:
+            type: string
+            enum: [submission_date_desc, submission_date_asc]
+      responses:
+        '200':
+          description: List of applications for the job
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LaborJobApplication'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/applications/{applicationId}:
+    get:
+      summary: Get application details
+      description: Retrieves details of a specific application
+      tags:
+        - Job Applications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          description: ID of the application
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Application details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobApplication'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/applications/{applicationId}/status:
+    patch:
+      summary: Update application status
+      description: Updates the status of a job application
+      tags:
+        - Job Applications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: applicationId
+          in: path
+          description: ID of the application
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [viewed, shortlisted, rejected, hired, withdrawn]
+                  description: New application status
+                note:
+                  type: string
+                  description: Optional note about the status change
+      responses:
+        '200':
+          description: Application status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborJobApplication'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #
+  # Assignments Endpoints
+  #
+  /labor/job-posts/{jobPostId}/assignments:
+    post:
+      summary: Create an assignment
+      description: Creates a labor assignment for a job post
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLaborAssignmentRequest'
+      responses:
+        '201':
+          description: Assignment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: List assignments for a job
+      description: Retrieves all assignments for a specific job post
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: jobPostId
+          in: path
+          description: ID of the job post
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of assignments for the job
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LaborAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/assignments/{assignmentId}:
+    get:
+      summary: Get assignment details
+      description: Retrieves details of a specific assignment
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          description: ID of the assignment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Assignment details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/assignments/{assignmentId}/status:
+    patch:
+      summary: Update assignment status
+      description: Updates the status of a labor assignment
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          description: ID of the assignment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [scheduled, in_progress, completed, canceled, no_show, partial]
+                  description: New assignment status
+      responses:
+        '200':
+          description: Assignment status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LaborAssignment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/assignments/{assignmentId}/check-ins:
+    post:
+      summary: Record check-in
+      description: Records a check-in for time tracking
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          description: ID of the assignment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAssignmentCheckInRequest'
+      responses:
+        '201':
+          description: Check-in recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCheckIn'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      summary: List check-ins
+      description: Retrieves all check-ins for a specific assignment
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: assignmentId
+          in: path
+          description: ID of the assignment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of check-ins for the assignment
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AssignmentCheckIn'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /labor/check-ins/{checkInId}/check-out:
+    post:
+      summary: Record check-out
+      description: Records a check-out for time tracking
+      tags:
+        - Assignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: checkInId
+          in: path
+          description: ID of the check-in
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - checkOutTime
+                - hoursLogged
+              properties:
+                checkOutTime:
+                  type: string
+                  format: date-time
+                  description: Time of check-out (ISO-8601)
+                hoursLogged:
+                  type: number
+                  format: double
+                  description: Number of hours worked
+                breakTimeMinutes:
+                  type: integer
+                  description: Break time in minutes
+                notes:
+                  type: string
+                  description: Notes about the work period
+                locationLat:
+                  type: number
+                  format: double
+                  description: Latitude of check-out location
+                locationLng:
+                  type: number
+                  format: double
+                  description: Longitude of check-out location
+                photoUrl:
+                  type: string
+                  format: uri
+                  description: URL of check-out photo
+      responses:
+        '200':
+          description: Check-out recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentCheckIn'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PaginationLimit:
+      name: limit
+      in: query
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+    PaginationOffset:
+      name: offset
+      in: query
+      description: Number of items to skip
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  schemas:
+    # Core Objects
+    LaborHelper:
+      type: object
+      required:
+        - id
+        - userId
+        - profileStatus
+        - verificationLevel
+        - identityVerified
+        - skillsVerified
+        - availabilityStatus
+        - hasTransportation
+        - hasOwnTools
+        - canPurchaseMaterials
+        - hasLiabilityInsurance
+        - totalCompletedJobs
+        - totalHoursWorked
+        - profileViews
+        - profileCompletionPercentage
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        profileStatus:
+          type: string
+          enum: [pending_verification, verified, suspended, inactive, active]
+        verificationLevel:
+          type: string
+          enum: [basic, identity_verified, background_checked, fully_verified]
+        backgroundCheckStatus:
+          type: string
+          enum: [not_submitted, pending, passed, failed, expired]
+        backgroundCheckDate:
+          type: string
+          format: date-time
+        identityVerified:
+          type: boolean
+        identityVerifiedDate:
+          type: string
+          format: date-time
+        skillsVerified:
+          type: boolean
+        skillsVerifiedDate:
+          type: string
+          format: date-time
+        verifiedById:
+          type: string
+          format: uuid
+        availabilityStatus:
+          type: string
+          enum: [available, busy, unavailable, vacation]
+        hourlyRateMin:
+          type: number
+        hourlyRateMax:
+          type: number
+        minimumHours:
+          type: number
+        dayRate:
+          type: number
+        currentLocationZip:
+          type: string
+        maxTravelDistance:
+          type: number
+        hasTransportation:
+          type: boolean
+        hasOwnTools:
+          type: boolean
+        canPurchaseMaterials:
+          type: boolean
+        yearsExperience:
+          type: number
+        hasLiabilityInsurance:
+          type: boolean
+        liabilityInsuranceExpiry:
+          type: string
+          format: date-time
+        insuranceVerificationDocUrl:
+          type: string
+          format: uri
+        reliabilityScore:
+          type: number
+        qualityScore:
+          type: number
+        communicationScore:
+          type: number
+        overallRating:
+          type: number
+        totalCompletedJobs:
+          type: integer
+        totalHoursWorked:
+          type: number
+        profileViews:
+          type: integer
+        profileCompletionPercentage:
+          type: integer
+        bio:
+          type: string
+        profileImageUrl:
+          type: string
+          format: uri
+        profileVideoUrl:
+          type: string
+          format: uri
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperSkill'
+        certifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperCertification'
+        workHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperWorkHistory'
+        availability:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperAvailability'
+        unavailableDates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperUnavailableDate'
+        earnedBadges:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperEarnedBadge'
+        skillCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/HelperSkillCategoryMapping'
+
+    # Request Objects
+    CreateHelperProfileRequest:
+      type: object
+      required:
+        - hasTransportation
+        - hasOwnTools
+        - canPurchaseMaterials
+        - hasLiabilityInsurance
+      properties:
+        hasTransportation:
+          type: boolean
+        hasOwnTools:
+          type: boolean
+        canPurchaseMaterials:
+          type: boolean
+        hasLiabilityInsurance:
+          type: boolean
+        hourlyRateMin:
+          type: number
+        hourlyRateMax:
+          type: number
+        minimumHours:
+          type: number
+        dayRate:
+          type: number
+        currentLocationZip:
+          type: string
+        maxTravelDistance:
+          type: number
+        yearsExperience:
+          type: number
+        liabilityInsuranceExpiry:
+          type: string
+          format: date-time
+        insuranceVerificationDocUrl:
+          type: string
+          format: uri
+        bio:
+          type: string
+        profileImageUrl:
+          type: string
+          format: uri
+        profileVideoUrl:
+          type: string
+          format: uri
+
+    UpdateHelperProfileRequest:
+      type: object
+      properties:
+        hasTransportation:
+          type: boolean
+        hasOwnTools:
+          type: boolean
+        canPurchaseMaterials:
+          type: boolean
+        hasLiabilityInsurance:
+          type: boolean
+        hourlyRateMin:
+          type: number
+        hourlyRateMax:
+          type: number
+        minimumHours:
+          type: number
+        dayRate:
+          type: number
+        currentLocationZip:
+          type: string
+        maxTravelDistance:
+          type: number
+        yearsExperience:
+          type: number
+        liabilityInsuranceExpiry:
+          type: string
+          format: date-time
+        insuranceVerificationDocUrl:
+          type: string
+          format: uri
+        bio:
+          type: string
+        profileImageUrl:
+          type: string
+          format: uri
+        profileVideoUrl:
+          type: string
+          format: uri
+
+    # Additional schemas for skills, certifications, job posts, etc.
+    # would be defined here similarly
+
+    # Response Objects
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+    Pagination:
+      type: object
+      required:
+        - total
+        - limit
+        - offset
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        hasMore:
+          type: boolean
+
+    HelperAnalytics:
+      type: object
+      properties:
+        totalEarnings:
+          type: number
+        averageRating:
+          type: number
+        completionRate:
+          type: number
+        totalHours:
+          type: number
+        topSkills:
+          type: array
+          items:
+            type: object
+            properties:
+              skillName:
+                type: string
+              jobCount:
+                type: integer
+        jobsOverTime:
+          type: array
+          items:
+            type: object
+            properties:
+              period:
+                type: string
+              count:
+                type: integer
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Forbidden:
+      description: Not authorized to perform the operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

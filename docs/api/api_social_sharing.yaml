@@ -1,0 +1,1179 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Social Sharing & Referrals API
+  description: |
+    API specification for the Social Sharing & Referrals domain of the InstaBids platform.
+    Includes endpoints for managing referrals, social sharing, testimonials, and rewards.
+  version: 1.0.0
+  contact:
+    name: InstaBids Development Team
+    email: dev@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: Referral Programs
+    description: Operations related to referral program configuration
+  - name: Referral Codes
+    description: Operations for generating and managing referral codes
+  - name: Referrals
+    description: Operations for tracking and managing referrals
+  - name: Rewards
+    description: Operations for managing referral rewards
+  - name: Social Sharing
+    description: Operations for social media sharing functionality
+  - name: Share Analytics
+    description: Operations for tracking and analyzing sharing metrics
+  - name: Testimonials
+    description: Operations for managing user testimonials
+  - name: Leaderboards
+    description: Operations for referral leaderboards
+  - name: Social Integration
+    description: Operations for social media platform integrations
+
+paths:
+  #
+  # REFERRAL PROGRAMS
+  #
+  /referral-programs:
+    get:
+      summary: List all referral programs
+      description: Returns a list of all active and inactive referral programs
+      tags:
+        - Referral Programs
+      parameters:
+        - name: status
+          in: query
+          description: Filter programs by status
+          schema:
+            type: string
+            enum: [active, inactive, all]
+            default: active
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          description: Number of items per page
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of referral programs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ReferralProgram'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    
+    post:
+      summary: Create a new referral program
+      description: Creates a new referral program with the specified configuration
+      tags:
+        - Referral Programs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferralProgramCreate'
+      responses:
+        '201':
+          description: Referral program created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralProgram'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  
+  /referral-programs/{programId}:
+    get:
+      summary: Get referral program details
+      description: Returns details of a specific referral program
+      tags:
+        - Referral Programs
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Referral program details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralProgram'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+
+    put:
+      summary: Update a referral program
+      description: Updates an existing referral program configuration
+      tags:
+        - Referral Programs
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReferralProgramUpdate'
+      responses:
+        '200':
+          description: Referral program updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralProgram'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    
+    delete:
+      summary: Delete a referral program
+      description: Marks a referral program as deleted (soft delete)
+      tags:
+        - Referral Programs
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Referral program deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referral-programs/{programId}/toggle-status:
+    post:
+      summary: Toggle program active status
+      description: Activates or deactivates a referral program
+      tags:
+        - Referral Programs
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - active
+              properties:
+                active:
+                  type: boolean
+                  description: Whether the program should be active
+      responses:
+        '200':
+          description: Status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralProgram'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referral-programs/{programId}/metrics:
+    get:
+      summary: Get referral program metrics
+      description: Returns performance metrics for a specific referral program
+      tags:
+        - Referral Programs
+        - Share Analytics
+      parameters:
+        - name: programId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Program metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralProgramMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  #
+  # REFERRAL CODES
+  #
+  /referral-codes:
+    get:
+      summary: List user's referral codes
+      description: Returns all referral codes for the authenticated user
+      tags:
+        - Referral Codes
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, expired, all]
+            default: active
+      responses:
+        '200':
+          description: List of referral codes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferralCode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+    
+    post:
+      summary: Generate a new referral code
+      description: Generates a new referral code for the authenticated user
+      tags:
+        - Referral Codes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - programId
+              properties:
+                programId:
+                  type: string
+                  format: uuid
+                maxUses:
+                  type: integer
+                  minimum: 1
+                  description: Maximum number of times this code can be used
+      responses:
+        '201':
+          description: Referral code generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralCode'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /referral-codes/{codeId}:
+    get:
+      summary: Get referral code details
+      description: Returns details of a specific referral code
+      tags:
+        - Referral Codes
+      parameters:
+        - name: codeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Referral code details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralCode'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    
+    delete:
+      summary: Deactivate a referral code
+      description: Deactivates a referral code so it can no longer be used
+      tags:
+        - Referral Codes
+      parameters:
+        - name: codeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Referral code deactivated successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referral-codes/{codeId}/stats:
+    get:
+      summary: Get referral code usage statistics
+      description: Returns usage statistics for a specific referral code
+      tags:
+        - Referral Codes
+        - Share Analytics
+      parameters:
+        - name: codeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Referral code statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralCodeStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referral-codes/validate/{code}:
+    get:
+      summary: Validate a referral code
+      description: Checks if a referral code is valid and returns program details
+      tags:
+        - Referral Codes
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Valid referral code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReferralCodeValidation'
+        '404':
+          description: Invalid or expired referral code
+      security:
+        - BearerAuth: []
+  
+  #
+  # REFERRALS
+  #
+  /referrals:
+    get:
+      summary: List user's referrals
+      description: Returns referrals associated with the authenticated user (as referrer or referee)
+      tags:
+        - Referrals
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [referrer, referee, all]
+            default: all
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, completed, rewarded, cancelled, all]
+            default: all
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of referrals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Referral'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+    
+    post:
+      summary: Apply a referral code
+      description: Applies a referral code to the current user's account
+      tags:
+        - Referrals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: The referral code to apply
+      responses:
+        '201':
+          description: Referral code applied successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+        '400':
+          description: Invalid code or code already applied
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /referrals/{referralId}:
+    get:
+      summary: Get referral details
+      description: Returns details of a specific referral
+      tags:
+        - Referrals
+      parameters:
+        - name: referralId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Referral details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referrals/{referralId}/track-event:
+    post:
+      summary: Track a qualifying event for a referral
+      description: Records a qualifying event that may change a referral's status
+      tags:
+        - Referrals
+      parameters:
+        - name: referralId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventType
+              properties:
+                eventType:
+                  type: string
+                  description: Type of qualifying event
+                  example: first_project_creation
+                eventDate:
+                  type: string
+                  format: date-time
+                  description: Date when the event occurred
+                eventData:
+                  type: object
+                  description: Additional data related to the event
+      responses:
+        '200':
+          description: Event recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /referrals/{referralId}/cancel:
+    post:
+      summary: Cancel a referral
+      description: Cancels a pending referral
+      tags:
+        - Referrals
+      parameters:
+        - name: referralId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for cancellation
+      responses:
+        '200':
+          description: Referral cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Referral'
+        '400':
+          description: Cannot cancel referral in current state
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  #
+  # REWARDS
+  #
+  /rewards:
+    get:
+      summary: List user's rewards
+      description: Returns rewards associated with the authenticated user
+      tags:
+        - Rewards
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [issued, redeemed, expired, cancelled, all]
+            default: all
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of rewards
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reward'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /rewards/{rewardId}:
+    get:
+      summary: Get reward details
+      description: Returns details of a specific reward
+      tags:
+        - Rewards
+      parameters:
+        - name: rewardId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Reward details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reward'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /rewards/{rewardId}/redeem:
+    post:
+      summary: Redeem a reward
+      description: Redeems a reward and applies it to the user's account
+      tags:
+        - Rewards
+      parameters:
+        - name: rewardId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: object
+                  description: Additional context for redemption
+      responses:
+        '200':
+          description: Reward redeemed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reward'
+        '400':
+          description: Cannot redeem reward in current state
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  #
+  # REFERRAL LEADERBOARDS
+  #
+  /leaderboards/referrals:
+    get:
+      summary: Get referral leaderboard
+      description: Returns the referral leaderboard for a specific period
+      tags:
+        - Leaderboards
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [current_month, previous_month, current_year, all_time]
+            default: current_month
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 100
+      responses:
+        '200':
+          description: Leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LeaderboardEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /leaderboards/referrals/me:
+    get:
+      summary: Get current user's leaderboard position
+      description: Returns the authenticated user's position and stats on the referral leaderboard
+      tags:
+        - Leaderboards
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [current_month, previous_month, current_year, all_time]
+            default: current_month
+      responses:
+        '200':
+          description: User's leaderboard position
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserLeaderboardPosition'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  #
+  # SOCIAL SHARING
+  #
+  /shares:
+    post:
+      summary: Record a social share
+      description: Records that a user has shared content on a social platform
+      tags:
+        - Social Sharing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareCreate'
+      responses:
+        '201':
+          description: Share recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Share'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+    
+    get:
+      summary: List user's shares
+      description: Returns a list of content shared by the authenticated user
+      tags:
+        - Social Sharing
+      parameters:
+        - name: entityType
+          in: query
+          schema:
+            type: string
+        - name: platform
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of shares
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Share'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /shares/generate-url:
+    post:
+      summary: Generate sharing URL
+      description: Generates a tracking URL for sharing content on social media
+      tags:
+        - Social Sharing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entityType
+                - entityId
+                - platform
+              properties:
+                entityType:
+                  type: string
+                  description: Type of content being shared
+                  example: project
+                entityId:
+                  type: string
+                  format: uuid
+                  description: ID of the content being shared
+                platform:
+                  type: string
+                  description: Social platform where content will be shared
+                  example: facebook
+                customMessage:
+                  type: string
+                  description: Optional custom message to include
+      responses:
+        '200':
+          description: Sharing URL generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shareUrl:
+                    type: string
+                    format: uri
+                  platformShareUrl:
+                    type: string
+                    format: uri
+                    description: Complete URL with platform-specific parameters
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+        - BearerAuth: []
+  
+  /shares/{shareId}:
+    get:
+      summary: Get share details
+      description: Returns details of a specific share
+      tags:
+        - Social Sharing
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Share details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Share'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /shares/{shareId}/stats:
+    get:
+      summary: Get share statistics
+      description: Returns engagement statistics for a specific share
+      tags:
+        - Social Sharing
+        - Share Analytics
+      parameters:
+        - name: shareId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Share statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /shares/click/{trackingId}:
+    get:
+      summary: Record share click
+      description: Records a click on a shared link and redirects to the target content
+      tags:
+        - Social Sharing
+        - Share Analytics
+      parameters:
+        - name: trackingId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: utm_source
+          in: query
+          schema:
+            type: string
+        - name: utm_medium
+          in: query
+          schema:
+            type: string
+        - name: utm_campaign
+          in: query
+          schema:
+            type: string
+        - name: utm_content
+          in: query
+          schema:
+            type: string
+        - name: utm_term
+          in: query
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to target content
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '404':
+          description: Invalid tracking ID
+  
+  /shares/click/{trackingId}/convert:
+    post:
+      summary: Record share conversion
+      description: Records a conversion from a shared link
+      tags:
+        - Social Sharing
+        - Share Analytics
+      parameters:
+        - name: trackingId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - conversionType
+              properties:
+                conversionType:
+                  type: string
+                  description: Type of conversion
+                  example: signup
+                conversionEntityId:
+                  type: string
+                  format: uuid
+                  description: ID of entity created during conversion
+      responses:
+        '200':
+          description: Conversion recorded successfully
+        '404':
+          description: Invalid tracking ID
+      security:
+        - BearerAuth: []
+  
+  /entities/{entityType}/{entityId}/share-stats:
+    get:
+      summary: Get sharing statistics for an entity
+      description: Returns sharing statistics for a specific entity
+      tags:
+        - Share Analytics
+      parameters:
+        - name: entityType
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Entity sharing statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntityShareStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  
+  /projects/{projectId}/sharing-options:
+    get:
+      summary: Get project sharing options
+      description: Returns sharing configuration options for a project
+      tags:
+        - Social Sharing
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project sharing options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectSharingOptions'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    
+    put:
+      summary: Update project sharing options
+      description: Updates sharing configuration options for a project
+      tags:
+        - Social Sharing

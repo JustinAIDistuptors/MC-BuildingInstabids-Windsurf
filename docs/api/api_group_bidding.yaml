@@ -1,0 +1,1090 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Group Bidding API
+  description: |
+    API for the InstaBids Group Bidding system. This API enables contractors to collaborate on bids, 
+    form bidding groups, and submit coordinated proposals for complex projects that require multiple
+    specialized contractors or trades.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: Bidding Groups
+    description: Operations for managing bidding groups
+  - name: Group Invitations
+    description: Operations for managing invitations to bidding groups
+  - name: Group Bids
+    description: Operations for managing bids created by groups
+  - name: Group Roles
+    description: Operations for managing member roles within groups
+  - name: Group Agreements
+    description: Operations for managing formal agreements between group members
+
+paths:
+  #-------------------------------------------------------------------------
+  # Bidding Groups
+  #-------------------------------------------------------------------------
+  /bidding-groups:
+    get:
+      summary: List bidding groups
+      description: Retrieves a list of bidding groups the authenticated user is a member of or has been invited to.
+      operationId: listBiddingGroups
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: status
+          in: query
+          description: Filter by group status
+          schema:
+            type: string
+            enum: [active, inactive, disbanded, pending]
+        - name: role
+          in: query
+          description: Filter by user's role in the group
+          schema:
+            type: string
+            enum: [owner, admin, member, invited]
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of bidding groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BiddingGroup'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create a bidding group
+      description: Creates a new bidding group with the authenticated user as the owner.
+      operationId: createBiddingGroup
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Name of the bidding group
+                  example: "Bay Area Renovation Team"
+                description:
+                  type: string
+                  description: Description of the bidding group
+                  example: "Collaborative group for full home renovations in the Bay Area"
+                specializations:
+                  type: array
+                  description: Specializations or trades covered by the group
+                  items:
+                    type: string
+                  example: ["Plumbing", "Electrical", "General Contracting"]
+                isPublic:
+                  type: boolean
+                  description: Whether the group is publicly discoverable
+                  default: false
+                coverImageUrl:
+                  type: string
+                  format: uri
+                  description: URL to the group's cover image
+      responses:
+        '201':
+          description: The bidding group was created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BiddingGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /bidding-groups/{groupId}:
+    get:
+      summary: Get bidding group details
+      description: Retrieves detailed information about a specific bidding group.
+      operationId: getBiddingGroup
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: includeMembers
+          in: query
+          description: Whether to include member details
+          schema:
+            type: boolean
+            default: false
+        - name: includePendingInvitations
+          in: query
+          description: Whether to include pending invitations (only for group admins)
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Detailed information about the bidding group
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BiddingGroupDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update bidding group
+      description: Updates details of a bidding group. Only group owners and admins can perform this operation.
+      operationId: updateBiddingGroup
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the bidding group
+                description:
+                  type: string
+                  description: Description of the bidding group
+                specializations:
+                  type: array
+                  description: Specializations or trades covered by the group
+                  items:
+                    type: string
+                isPublic:
+                  type: boolean
+                  description: Whether the group is publicly discoverable
+                coverImageUrl:
+                  type: string
+                  format: uri
+                  description: URL to the group's cover image
+                status:
+                  type: string
+                  description: Status of the bidding group
+                  enum: [active, inactive, disbanded]
+      responses:
+        '200':
+          description: The bidding group was updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BiddingGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete bidding group
+      description: Marks a bidding group as disbanded. Only the group owner can perform this operation.
+      operationId: deleteBiddingGroup
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The bidding group was deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete group with active bids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot disband group with active bids"
+                  activeBids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+
+  /bidding-groups/{groupId}/members:
+    get:
+      summary: List bidding group members
+      description: Retrieves a list of members of a specific bidding group.
+      operationId: listBiddingGroupMembers
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: role
+          in: query
+          description: Filter by member role
+          schema:
+            type: string
+            enum: [owner, admin, member]
+        - name: specialization
+          in: query
+          description: Filter by member specialization
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of bidding group members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupMember'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bidding-groups/{groupId}/members/{userId}:
+    get:
+      summary: Get member details
+      description: Retrieves detailed information about a specific member of a bidding group.
+      operationId: getBiddingGroupMember
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: ID of the user
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detailed information about the group member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GroupMemberDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update member details
+      description: Updates a member's role or details within a bidding group. Only group owners and admins can perform this operation.
+      operationId: updateBiddingGroupMember
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: ID of the user
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  description: Role of the member in the group
+                  enum: [admin, member]
+                specializations:
+                  type: array
+                  description: Member's specializations within the group
+                  items:
+                    type: string
+                profitShare:
+                  type: number
+                  description: Member's default profit share percentage for group bids
+                  minimum: 0
+                  maximum: 100
+                isActive:
+                  type: boolean
+                  description: Whether the member is active in the group
+      responses:
+        '200':
+          description: The member details were updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GroupMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Remove member from group
+      description: Removes a member from a bidding group. Group owners can remove any member except themselves. Group admins can remove regular members. Members can remove themselves.
+      operationId: removeBiddingGroupMember
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: ID of the user
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: The member was removed successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot remove member with active responsibilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot remove member with active responsibilities in group bids"
+                  activeBids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+
+  /bidding-groups/{groupId}/leave:
+    post:
+      summary: Leave bidding group
+      description: Allows the authenticated user to leave a bidding group. Group owners must transfer ownership before leaving.
+      operationId: leaveBiddingGroup
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Successfully left the bidding group
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Forbidden - cannot leave group as owner
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Group owners cannot leave. Transfer ownership first."
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot leave group with active responsibilities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot leave group with active responsibilities in group bids"
+                  activeBids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+
+  /bidding-groups/{groupId}/transfer-ownership:
+    post:
+      summary: Transfer group ownership
+      description: Transfers ownership of a bidding group to another member. Only the current owner can perform this operation.
+      operationId: transferBiddingGroupOwnership
+      tags:
+        - Bidding Groups
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newOwnerId
+              properties:
+                newOwnerId:
+                  type: string
+                  format: uuid
+                  description: ID of the user to transfer ownership to
+      responses:
+        '200':
+          description: Ownership transferred successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/BiddingGroup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: New owner must be a group member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "New owner must be a current group member"
+
+  #-------------------------------------------------------------------------
+  # Group Invitations
+  #-------------------------------------------------------------------------
+  /bidding-groups/{groupId}/invitations:
+    get:
+      summary: List group invitations
+      description: Retrieves a list of pending invitations for a bidding group. Only group owners and admins can view all invitations.
+      operationId: listGroupInvitations
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by invitation status
+          schema:
+            type: string
+            enum: [pending, accepted, declined, expired, cancelled]
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of group invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupInvitation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Invite to bidding group
+      description: Sends an invitation to join a bidding group. Only group owners and admins can send invitations.
+      operationId: createGroupInvitation
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - inviteeId
+                - role
+              properties:
+                inviteeId:
+                  type: string
+                  format: uuid
+                  description: ID of the user to invite
+                role:
+                  type: string
+                  description: Proposed role for the invitee
+                  enum: [admin, member]
+                specializations:
+                  type: array
+                  description: Proposed specializations for the invitee
+                  items:
+                    type: string
+                message:
+                  type: string
+                  description: Personal message to include with the invitation
+                expiresAt:
+                  type: string
+                  format: date-time
+                  description: When the invitation expires (defaults to 7 days)
+      responses:
+        '201':
+          description: Invitation sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GroupInvitation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: User already invited or is a member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "User already has a pending invitation or is already a member"
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /bidding-groups/invitations/{invitationId}:
+    get:
+      summary: Get invitation details
+      description: Retrieves details of a specific group invitation. Accessible by the inviter, the invitee, and group admins.
+      operationId: getGroupInvitation
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: invitationId
+          in: path
+          description: ID of the invitation
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detailed information about the invitation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GroupInvitationDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Cancel invitation
+      description: Cancels a pending group invitation. Only the inviter or group admins can cancel invitations.
+      operationId: cancelGroupInvitation
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: invitationId
+          in: path
+          description: ID of the invitation
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Invitation cancelled successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot cancel a non-pending invitation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot cancel invitation that is not pending"
+
+  /bidding-groups/invitations/{invitationId}/accept:
+    post:
+      summary: Accept group invitation
+      description: Accepts an invitation to join a bidding group. Only the invitee can accept their own invitation.
+      operationId: acceptGroupInvitation
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: invitationId
+          in: path
+          description: ID of the invitation
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invitation accepted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GroupMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only invitees can accept invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Only the invited user can accept this invitation"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot accept expired or non-pending invitation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot accept invitation that is expired or not pending"
+
+  /bidding-groups/invitations/{invitationId}/decline:
+    post:
+      summary: Decline group invitation
+      description: Declines an invitation to join a bidding group. Only the invitee can decline their own invitation.
+      operationId: declineGroupInvitation
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: invitationId
+          in: path
+          description: ID of the invitation
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for declining the invitation
+      responses:
+        '200':
+          description: Invitation declined successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Only invitees can decline invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Only the invited user can decline this invitation"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot decline non-pending invitation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Cannot decline invitation that is not pending"
+
+  /user/bidding-group-invitations:
+    get:
+      summary: List my invitations
+      description: Retrieves a list of all bidding group invitations for the authenticated user.
+      operationId: listMyGroupInvitations
+      tags:
+        - Group Invitations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: status
+          in: query
+          description: Filter by invitation status
+          schema:
+            type: string
+            enum: [pending, accepted, declined, expired, cancelled]
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of the user's group invitations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupInvitation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  #-------------------------------------------------------------------------
+  # Group Bids
+  #-------------------------------------------------------------------------
+  /bidding-groups/{groupId}/bids:
+    get:
+      summary: List group bids
+      description: Retrieves a list of bids associated with a specific bidding group.
+      operationId: listGroupBids
+      tags:
+        - Group Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: groupId
+          in: path
+          description: ID of the bidding group
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by bid status
+          schema:
+            type: string
+            enum: [draft, submitted, awarded, rejected, withdrawn, expired]
+        - name: limit
+          in: query
+          description: Maximum number of items to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip for pagination
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: A list of bids associated with the group
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupBid'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Create group bid
+      description: Creates a

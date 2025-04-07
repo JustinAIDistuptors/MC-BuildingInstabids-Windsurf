@@ -1,0 +1,1134 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Payment API
+  description: |
+    API for managing payment processing in the InstaBids platform.
+    This API handles payment methods, transactions, escrow accounts, milestone payments,
+    subscriptions, promotion codes, and withdrawal requests.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: Payment Methods
+    description: Operations for managing payment methods
+  - name: Transactions
+    description: Operations for processing and managing transactions
+  - name: Escrow
+    description: Operations for escrow accounts and transactions
+  - name: Milestone Payments
+    description: Operations for milestone-based payments
+  - name: Subscriptions
+    description: Operations for subscription management
+  - name: Promotions
+    description: Operations for promotion codes
+  - name: Withdrawals
+    description: Operations for withdrawal requests
+  - name: Fee Calculations
+    description: Operations for calculating fees and taxes
+
+paths:
+  #-------------------------------------------------------------------------
+  # Payment Methods
+  #-------------------------------------------------------------------------
+  /payment-methods:
+    get:
+      summary: Get user's payment methods
+      description: Retrieves all payment methods associated with the authenticated user.
+      operationId: getPaymentMethods
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      responses:
+        '200':
+          description: List of payment methods
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Add a payment method
+      description: Adds a new payment method for the authenticated user.
+      operationId: createPaymentMethod
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentMethodCreate'
+      responses:
+        '201':
+          description: Payment method created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentMethod'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payment-methods/{paymentMethodId}:
+    get:
+      summary: Get a payment method
+      description: Retrieves a specific payment method by ID.
+      operationId: getPaymentMethod
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: paymentMethodId
+          in: path
+          description: ID of the payment method
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment method details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a payment method
+      description: Updates an existing payment method.
+      operationId: updatePaymentMethod
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: paymentMethodId
+          in: path
+          description: ID of the payment method
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentMethodUpdate'
+      responses:
+        '200':
+          description: Payment method updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentMethod'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a payment method
+      description: Deletes a payment method.
+      operationId: deletePaymentMethod
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: paymentMethodId
+          in: path
+          description: ID of the payment method
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Payment method deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payment-methods/{paymentMethodId}/set-default:
+    post:
+      summary: Set payment method as default
+      description: Sets a payment method as the default for the authenticated user.
+      operationId: setDefaultPaymentMethod
+      tags:
+        - Payment Methods
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: paymentMethodId
+          in: path
+          description: ID of the payment method
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment method set as default
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: 
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Transactions
+  #-------------------------------------------------------------------------
+  /transactions:
+    get:
+      summary: Get transactions
+      description: Retrieves transactions for the authenticated user with optional filtering.
+      operationId: getTransactions
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: status
+          in: query
+          description: Filter by transaction status
+          schema:
+            type: string
+            enum: [pending, processing, completed, failed, refunded, partially_refunded, disputed, canceled]
+        - name: type
+          in: query
+          description: Filter by transaction type ID
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          description: Filter by date from (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          description: Filter by date to (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: relatedEntityType
+          in: query
+          description: Filter by related entity type
+          schema:
+            type: string
+        - name: relatedEntityId
+          in: query
+          description: Filter by related entity ID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a transaction
+      description: Creates a new payment transaction.
+      operationId: createTransaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionCreate'
+      responses:
+        '201':
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /transactions/{transactionId}:
+    get:
+      summary: Get a transaction
+      description: Retrieves a specific transaction by ID.
+      operationId: getTransaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: transactionId
+          in: path
+          description: ID of the transaction
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /transactions/{transactionId}/refund:
+    post:
+      summary: Refund a transaction
+      description: Processes a refund for a transaction, either full or partial.
+      operationId: refundTransaction
+      tags:
+        - Transactions
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: transactionId
+          in: path
+          description: ID of the transaction
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                  description: Amount to refund. If not provided, a full refund will be processed.
+                reason:
+                  type: string
+                  description: Reason for the refund
+              required:
+                - reason
+      responses:
+        '200':
+          description: Refund processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Escrow
+  #-------------------------------------------------------------------------
+  /escrow/accounts:
+    get:
+      summary: Get user's escrow account
+      description: Retrieves the escrow account for the authenticated user.
+      operationId: getEscrowAccount
+      tags:
+        - Escrow
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      responses:
+        '200':
+          description: Escrow account details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EscrowAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /escrow/transactions:
+    get:
+      summary: Get escrow transactions
+      description: Retrieves escrow transactions for the authenticated user with optional filtering.
+      operationId: getEscrowTransactions
+      tags:
+        - Escrow
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: transactionType
+          in: query
+          description: Filter by transaction type
+          schema:
+            type: string
+            enum: [deposit, withdrawal, milestone_hold, milestone_release, refund, adjustment]
+        - name: status
+          in: query
+          description: Filter by transaction status
+          schema:
+            type: string
+            enum: [pending, completed, failed, reversed]
+        - name: projectId
+          in: query
+          description: Filter by project ID
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: query
+          description: Filter by milestone ID
+          schema:
+            type: string
+            format: uuid
+        - name: dateFrom
+          in: query
+          description: Filter by date from (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: dateTo
+          in: query
+          description: Filter by date to (ISO-8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of escrow transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EscrowTransaction'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  #-------------------------------------------------------------------------
+  # Milestone Payments
+  #-------------------------------------------------------------------------
+  /milestone-payments:
+    get:
+      summary: Get milestone payments
+      description: Retrieves milestone payments with optional filtering.
+      operationId: getMilestonePayments
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: projectId
+          in: query
+          description: Filter by project ID
+          schema:
+            type: string
+            format: uuid
+        - name: milestoneId
+          in: query
+          description: Filter by milestone ID
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [pending, funded, released, refunded, disputed, canceled]
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of milestone payments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MilestonePayment'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a milestone payment
+      description: Creates a new milestone payment.
+      operationId: createMilestonePayment
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MilestonePaymentCreate'
+      responses:
+        '201':
+          description: Milestone payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MilestonePayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /milestone-payments/{milestonePaymentId}:
+    get:
+      summary: Get a milestone payment
+      description: Retrieves a specific milestone payment by ID.
+      operationId: getMilestonePayment
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: milestonePaymentId
+          in: path
+          description: ID of the milestone payment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Milestone payment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MilestonePayment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /milestone-payments/{milestonePaymentId}/release:
+    post:
+      summary: Release a milestone payment
+      description: Releases funds from a milestone payment to the contractor.
+      operationId: releaseMilestonePayment
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: milestonePaymentId
+          in: path
+          description: ID of the milestone payment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Milestone payment released
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MilestonePayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /milestone-payments/{milestonePaymentId}/dispute:
+    post:
+      summary: Dispute a milestone payment
+      description: Creates a dispute for a milestone payment.
+      operationId: disputeMilestonePayment
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: milestonePaymentId
+          in: path
+          description: ID of the milestone payment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentDisputeCreate'
+      responses:
+        '201':
+          description: Dispute created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentDispute'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Payment Disputes
+  #-------------------------------------------------------------------------
+  /payment-disputes:
+    get:
+      summary: Get payment disputes
+      description: Retrieves payment disputes with optional filtering.
+      operationId: getPaymentDisputes
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [opened, under_review, evidence_requested, resolved_favor_payer, resolved_favor_payee, partially_resolved, canceled, escalated]
+        - name: milestonePaymentId
+          in: query
+          description: Filter by milestone payment ID
+          schema:
+            type: string
+            format: uuid
+        - name: transactionId
+          in: query
+          description: Filter by transaction ID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of payment disputes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentDispute'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payment-disputes/{disputeId}:
+    get:
+      summary: Get a payment dispute
+      description: Retrieves a specific payment dispute by ID.
+      operationId: getPaymentDispute
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: disputeId
+          in: path
+          description: ID of the payment dispute
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment dispute details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentDispute'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payment-disputes/{disputeId}/messages:
+    get:
+      summary: Get dispute messages
+      description: Retrieves messages for a specific payment dispute.
+      operationId: getDisputeMessages
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: disputeId
+          in: path
+          description: ID of the payment dispute
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Dispute messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentDisputeMessage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Add a dispute message
+      description: Adds a new message to a payment dispute.
+      operationId: addDisputeMessage
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: disputeId
+          in: path
+          description: ID of the payment dispute
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: Message content
+                mediaUrls:
+                  type: array
+                  description: Array of media URLs
+                  items:
+                    type: string
+                    format: uri
+              required:
+                - message
+      responses:
+        '201':
+          description: Dispute message added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentDisputeMessage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payment-disputes/{disputeId}/evidence:
+    post:
+      summary: Submit dispute evidence
+      description: Submits evidence for a payment dispute.
+      operationId: submitDisputeEvidence
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: disputeId
+          in: path
+          description: ID of the payment dispute
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                evidenceUrls:
+                  type: array
+                  description: Array of evidence URLs
+                  items:
+                    type: string
+                    format: uri
+                description:
+                  type: string
+                  description: Description of the evidence
+              required:
+                - evidenceUrls
+      responses:
+        '200':
+          description: Evidence submitted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentDispute'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Payment Schedules
+  #-------------------------------------------------------------------------
+  /payment-schedules:
+    get:
+      summary: Get payment schedules
+      description: Retrieves payment schedules with optional filtering.
+      operationId: getPaymentSchedules
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: projectId
+          in: query
+          description: Filter by project ID
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [draft, active, completed, canceled]
+        - name: limit
+          in: query
+          description: Maximum number of results to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of results to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of payment schedules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentSchedule'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a payment schedule
+      description: Creates a new payment schedule.
+      operationId: createPaymentSchedule
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentScheduleCreate'
+      responses:
+        '201':
+          description: Payment schedule created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentSchedule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /payment-schedules/{scheduleId}:
+    get:
+      summary: Get a payment schedule
+      description: Retrieves a specific payment schedule by ID.
+      operationId: getPaymentSchedule
+      tags:
+        - Milestone Payments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: scheduleId
+          in: path
+          description: ID of the payment schedule
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment schedule details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/

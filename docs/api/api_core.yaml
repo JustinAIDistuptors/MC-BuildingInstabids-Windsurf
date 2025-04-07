@@ -1,0 +1,995 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Core API
+  description: |
+    Core API specification for InstaBids platform. This document defines the common patterns, 
+    authentication mechanisms, error handling, and shared resources used across all domain-specific APIs.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production API Server
+  - url: https://api-staging.instabids.com/v1
+    description: Staging API Server
+  - url: https://api-dev.instabids.com/v1
+    description: Development API Server
+  - url: http://localhost:3000/v1
+    description: Local Development
+
+tags:
+  - name: Auth
+    description: Authentication and authorization operations
+  - name: Users
+    description: Core user operations across all user types
+  - name: Files
+    description: File upload and management operations
+  - name: Notifications
+    description: System-wide notification operations
+  - name: System
+    description: System-level operations and health checks
+
+paths:
+  /health:
+    get:
+      summary: System health check
+      description: Returns the health status of the API and its dependencies
+      operationId: getHealthStatus
+      tags:
+        - System
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '503':
+          description: System is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+  
+  /auth/login:
+    post:
+      summary: User login
+      description: Authenticates a user and returns access and refresh tokens
+      operationId: login
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/logout:
+    post:
+      summary: User logout
+      description: Invalidates the current access token and associated refresh tokens
+      operationId: logout
+      tags:
+        - Auth
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Logout successful
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/refresh:
+    post:
+      summary: Refresh authentication tokens
+      description: Uses a refresh token to obtain a new access token
+      operationId: refreshToken
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Token refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/register:
+    post:
+      summary: User registration
+      description: Registers a new user account
+      operationId: registerUser
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/password-reset:
+    post:
+      summary: Request password reset
+      description: Sends a password reset email to the user
+      operationId: requestPasswordReset
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '204':
+          description: Password reset email sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/password-reset/confirm:
+    post:
+      summary: Confirm password reset
+      description: Resets a user's password using the token sent via email
+      operationId: confirmPasswordReset
+      tags:
+        - Auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '204':
+          description: Password reset successful
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/me:
+    get:
+      summary: Get current user profile
+      description: Returns the profile of the currently authenticated user
+      operationId: getCurrentUser
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      summary: Update current user profile
+      description: Updates the profile of the currently authenticated user
+      operationId: updateCurrentUser
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: User profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /users/me/password:
+    put:
+      summary: Change password
+      description: Changes the password for the currently authenticated user
+      operationId: changePassword
+      tags:
+        - Users
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordChangeRequest'
+      responses:
+        '204':
+          description: Password changed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /files/upload:
+    post:
+      summary: Upload file
+      description: |
+        Uploads a file to the system. The file will be associated with the authenticated user
+        and can be referenced in other API calls. Supports images, documents, and other file types.
+      operationId: uploadFile
+      tags:
+        - Files
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload
+                purpose:
+                  type: string
+                  description: Purpose of the upload (profile, project, verification, etc.)
+                metadata:
+                  type: object
+                  description: Additional metadata for the file
+              required:
+                - file
+                - purpose
+      responses:
+        '201':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /files/{fileId}:
+    get:
+      summary: Get file
+      description: Retrieves a file by ID
+      operationId: getFile
+      tags:
+        - Files
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: File retrieved successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      summary: Delete file
+      description: Deletes a file by ID
+      operationId: deleteFile
+      tags:
+        - Files
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: File deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /notifications:
+    get:
+      summary: Get notifications
+      description: Retrieves notifications for the authenticated user
+      operationId: getNotifications
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: read
+          in: query
+          description: Filter by read status
+          schema:
+            type: boolean
+        - name: types
+          in: query
+          description: Filter by notification types
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [system, message, bid, project, payment, verification]
+      responses:
+        '200':
+          description: Notifications retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /notifications/{notificationId}/read:
+    put:
+      summary: Mark notification as read
+      description: Marks a specific notification as read
+      operationId: markNotificationRead
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification marked as read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /notifications/read-all:
+    put:
+      summary: Mark all notifications as read
+      description: Marks all notifications for the authenticated user as read
+      operationId: markAllNotificationsRead
+      tags:
+        - Notifications
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: All notifications marked as read
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+          example: invalid_request
+        message:
+          type: string
+          description: Human-readable error message
+          example: Invalid request parameters
+        details:
+          type: object
+          description: Additional error details
+      required:
+        - code
+        - message
+    
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            fieldErrors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    description: Field with validation error
+                    example: email
+                  message:
+                    type: string
+                    description: Validation error message
+                    example: Must be a valid email address
+                required:
+                  - field
+                  - message
+    
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          description: Overall system health status
+        version:
+          type: string
+          description: API version
+        timestamp:
+          type: string
+          format: date-time
+          description: Time of health check
+        dependencies:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [healthy, unhealthy, degraded]
+              latency:
+                type: number
+                description: Latency in milliseconds
+              message:
+                type: string
+                description: Additional status information
+      required:
+        - status
+        - version
+        - timestamp
+        - dependencies
+    
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: p@ssw0rd
+      required:
+        - email
+        - password
+    
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          description: Refresh token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      required:
+        - refreshToken
+    
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          description: JWT refresh token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        expiresIn:
+          type: integer
+          description: Token expiration time in seconds
+          example: 3600
+        tokenType:
+          type: string
+          description: Token type
+          example: Bearer
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager, admin]
+          description: Type of user account
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+        - tokenType
+        - userType
+    
+    RegistrationRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          description: User's password
+          example: p@ssw0rd
+        firstName:
+          type: string
+          description: User's first name
+          example: John
+        lastName:
+          type: string
+          description: User's last name
+          example: Doe
+        phoneNumber:
+          type: string
+          description: User's phone number
+          example: +1-555-123-4567
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account to create
+      required:
+        - email
+        - password
+        - firstName
+        - lastName
+        - userType
+    
+    RegistrationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user ID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        emailVerified:
+          type: boolean
+          description: Whether the email is verified
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+        - userType
+        - createdAt
+        - emailVerified
+    
+    PasswordResetRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email associated with the account
+          example: user@example.com
+      required:
+        - email
+    
+    PasswordResetConfirmRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Password reset token received via email
+        password:
+          type: string
+          format: password
+          description: New password
+      required:
+        - token
+        - password
+    
+    PasswordChangeRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          description: Current password
+        newPassword:
+          type: string
+          format: password
+          description: New password
+      required:
+        - currentPassword
+        - newPassword
+    
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user ID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: User's phone number
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL to user's avatar image
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager, admin]
+          description: Type of user account
+        emailVerified:
+          type: boolean
+          description: Whether the email is verified
+        phoneVerified:
+          type: boolean
+          description: Whether the phone number is verified
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Account last update timestamp
+        settings:
+          type: object
+          properties:
+            notificationPreferences:
+              type: object
+              properties:
+                email:
+                  type: boolean
+                  description: Email notifications enabled
+                sms:
+                  type: boolean
+                  description: SMS notifications enabled
+                push:
+                  type: boolean
+                  description: Push notifications enabled
+            timezone:
+              type: string
+              description: User's timezone
+              example: America/New_York
+            language:
+              type: string
+              description: User's preferred language
+              example: en-US
+      required:
+        - id
+        - email
+        - firstName
+        - lastName
+        - userType
+        - emailVerified
+        - phoneVerified
+        - createdAt
+        - updatedAt
+    
+    UserProfileUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: User's phone number
+        settings:
+          type: object
+          properties:
+            notificationPreferences:
+              type: object
+              properties:
+                email:
+                  type: boolean
+                  description: Email notifications enabled
+                sms:
+                  type: boolean
+                  description: SMS notifications enabled
+                push:
+                  type: boolean
+                  description: Push notifications enabled
+            timezone:
+              type: string
+              description: User's timezone
+            language:
+              type: string
+              description: User's preferred language
+    
+    FileMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique file ID
+        name:
+          type: string
+          description: Original filename
+        mimeType:
+          type: string
+          description: MIME type of the file
+        size:
+          type: integer
+          description: File size in bytes
+        url:
+          type: string
+          format: uri
+          description: URL to access the file
+        purpose:
+          type: string
+          description: Purpose of the file
+        metadata:
+          type: object
+          description: Additional metadata
+        uploadedBy:
+          type: string
+          format: uuid
+          description: ID of the user who uploaded the file
+        createdAt:
+          type: string
+          format: date-time
+          description: Upload timestamp
+      required:
+        - id
+        - name
+        - mimeType
+        - size
+        - url
+        - purpose
+        - uploadedBy
+        - createdAt
+    
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique notification ID
+        userId:
+          type: string
+          format: uuid
+          description: ID of the user this notification is for
+        type:
+          type: string
+          enum: [system, message, bid, project, payment, verification]
+          description: Type of notification
+        title:
+          type: string
+          description: Notification title
+        body:
+          type: string
+          description: Notification body text
+        data:
+          type: object
+          description: Additional data payload
+        read:
+          type: boolean
+          description: Whether the notification has been read
+        priority:
+          type: string
+          enum: [low, normal, high, urgent]
+          description: Notification priority
+          default: normal
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when notification was created
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - body
+        - read
+        - priority
+        - createdAt
+    
+    NotificationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+      required:
+        - items
+        - pagination
+    
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: Current page number
+          minimum: 1
+        limit:
+          type: integer
+          description: Number of items per page
+          minimum: 1
+        totalItems:
+          type: integer
+          description: Total number of items
+        totalPages:
+          type: integer
+          description: Total number of pages
+      required:
+        - page
+        - limit
+        - totalItems
+        - totalPages
+  
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      description: Page number for pagination
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    
+    LimitParam:
+      name: limit
+      in: query
+      description: Number of items per page for pagination
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationError'
+    
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    TooManyRequests:
+      description: Too many requests
+      headers:
+        Retry-After:
+          description: Time to wait before retrying
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

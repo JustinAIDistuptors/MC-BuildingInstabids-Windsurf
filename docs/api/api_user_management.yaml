@@ -1,0 +1,4824 @@
+openapi: 3.0.3
+info:
+  title: InstaBids User Management API
+  description: |
+    API for user management, authentication, profile management, and verification
+    in the InstaBids platform.
+  version: 1.0.0
+  contact:
+    name: InstaBids API Team
+    email: api@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://api-staging.instabids.com/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Users
+    description: User account management
+  - name: Profiles
+    description: User profile management
+  - name: Verification
+    description: User verification and document management
+  - name: Teams
+    description: Team and member management
+  - name: Preferences
+    description: User preferences and settings
+
+paths:
+  #==========================================================================
+  # Authentication Endpoints
+  #==========================================================================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with email and password
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Email already exists'
+                code: 'USER_EXISTS'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate a user with email and password
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginCredentials'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh auth tokens
+      description: Obtain a new access token using a refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: The refresh token received during login or previous refresh
+      responses:
+        '200':
+          description: Token refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate the user's current session and tokens
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Successfully logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Forgot password
+      description: Request a password reset link
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email address of the account
+      responses:
+        '200':
+          description: Password reset email sent if account exists
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password
+      description: Reset password using a valid reset token
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                  description: Password reset token received by email
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 10
+                  description: New password (min 10 characters)
+      responses:
+        '200':
+          description: Password successfully reset
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Invalid or expired token'
+                code: 'INVALID_TOKEN'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/verify-email:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email
+      description: Verify user's email using a verification token
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: Email verification token
+      responses:
+        '200':
+          description: Email successfully verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Invalid or expired token'
+                code: 'INVALID_TOKEN'
+  
+  /auth/resend-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Resend verification email
+      description: Resend the email verification link
+      operationId: resendVerification
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Verification email sent
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/verify-phone:
+    post:
+      tags:
+        - Authentication
+      summary: Verify phone number
+      description: Verify user's phone number using a verification code
+      operationId: verifyPhone
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Phone verification code sent via SMS
+      responses:
+        '200':
+          description: Phone number successfully verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/send-phone-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Send phone verification code
+      description: Send a verification code to the user's phone
+      operationId: sendPhoneVerification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phoneNumber
+              properties:
+                phoneNumber:
+                  type: string
+                  description: Phone number in E.164 format (e.g., +14155552671)
+                  pattern: '^\+[1-9]\d{1,14}$'
+      responses:
+        '200':
+          description: Verification code sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/mfa/configure:
+    post:
+      tags:
+        - Authentication
+      summary: Configure MFA
+      description: Set up multi-factor authentication for a user
+      operationId: configureMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+                  enum: [totp, sms]
+                  description: Type of MFA to configure (authenticator app or SMS)
+      responses:
+        '200':
+          description: MFA configuration initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                    description: TOTP secret (for authenticator app)
+                  qrCode:
+                    type: string
+                    format: uri
+                    description: QR code image URL (for authenticator app)
+                  phoneNumber:
+                    type: string
+                    description: Masked phone number (for SMS)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Verify MFA
+      description: Verify and activate MFA with a verification code
+      operationId: verifyMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Verification code from authenticator app or SMS
+      responses:
+        '200':
+          description: MFA successfully configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recoveryCodes:
+                    type: array
+                    items:
+                      type: string
+                    description: Recovery codes for backup access
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/disable:
+    post:
+      tags:
+        - Authentication
+      summary: Disable MFA
+      description: Disable multi-factor authentication for a user
+      operationId: disableMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+      responses:
+        '200':
+          description: MFA successfully disabled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/recovery:
+    post:
+      tags:
+        - Authentication
+      summary: Use MFA recovery code
+      description: Authenticate using a recovery code when MFA device is unavailable
+      operationId: mfaRecovery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - recoveryCode
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                password:
+                  type: string
+                  format: password
+                  description: User's password
+                recoveryCode:
+                  type: string
+                  description: MFA recovery code
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/social/{provider}:
+    get:
+      tags:
+        - Authentication
+      summary: Initiate social login
+      description: Start the social authentication flow with a provider
+      operationId: socialLogin
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, facebook, apple]
+          description: Social authentication provider
+      responses:
+        '302':
+          description: Redirect to provider's authentication page
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  
+  /auth/social/{provider}/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Social login callback
+      description: Callback endpoint for social authentication
+      operationId: socialLoginCallback
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, facebook, apple]
+          description: Social authentication provider
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from provider
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: State parameter for CSRF protection
+      responses:
+        '302':
+          description: Redirect to frontend with tokens
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  
+  #==========================================================================
+  # User Endpoints
+  #==========================================================================
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user
+      description: Get the current authenticated user's information
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/{userId}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Get a user's public information by ID
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      description: Update a user's account information
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /users/me/password:
+    put:
+      tags:
+        - Users
+      summary: Change password
+      description: Change the current user's password
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - currentPassword
+                - newPassword
+              properties:
+                currentPassword:
+                  type: string
+                  format: password
+                  description: Current password
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 10
+                  description: New password (min 10 characters)
+      responses:
+        '200':
+          description: Password successfully changed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/me/email:
+    put:
+      tags:
+        - Users
+      summary: Change email
+      description: Initiate email change process
+      operationId: changeEmail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newEmail
+                - password
+              properties:
+                newEmail:
+                  type: string
+                  format: email
+                  description: New email address
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+      responses:
+        '200':
+          description: Email change initiated, verification required
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Email already exists'
+                code: 'EMAIL_EXISTS'
+  
+  /users/me/devices:
+    get:
+      tags:
+        - Users
+      summary: Get active devices
+      description: Get a list of active sessions and devices
+      operationId: getActiveDevices
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of active devices and sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/me/devices/{sessionId}:
+    delete:
+      tags:
+        - Users
+      summary: Revoke session
+      description: Revoke a specific session/device
+      operationId: revokeSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session identifier
+      responses:
+        '204':
+          description: Session successfully revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /users/me/account:
+    delete:
+      tags:
+        - Users
+      summary: Delete account
+      description: Initiate account deletion process
+      operationId: deleteAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+                reason:
+                  type: string
+                  description: Reason for deletion (optional)
+      responses:
+        '200':
+          description: Account deletion initiated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  #==========================================================================
+  # Profile Endpoints
+  #==========================================================================
+  /profiles/me:
+    get:
+      tags:
+        - Profiles
+      summary: Get current profile
+      description: Get the current user's profile information
+      operationId: getCurrentProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Profile not found or not created yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Profile not found'
+                code: 'PROFILE_NOT_FOUND'
+    
+    put:
+      tags:
+        - Profiles
+      summary: Update profile
+      description: Update or create the current user's profile
+      operationId: updateProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Profile successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /profiles/{userId}:
+    get:
+      tags:
+        - Profiles
+      summary: Get user profile
+      description: Get a user's public profile information
+      operationId: getUserProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /profiles/me/avatar:
+    post:
+      tags:
+        - Profiles
+      summary: Upload avatar
+      description: Upload or update the user's profile picture
+      operationId: uploadAvatar
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, WebP)
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatarUrl:
+                    type: string
+                    format: uri
+                    description: URL of the uploaded avatar
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Image file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'File too large, max 5MB'
+                code: 'FILE_TOO_LARGE'
+  
+  /profiles/{userType}/search:
+    get:
+      tags:
+        - Profiles
+      summary: Search profiles
+      description: Search for user profiles by type and criteria
+      operationId: searchProfiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [homeowner, contractor, helper, property_manager]
+          description: Type of users to search for
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Search query for name, company, etc.
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: Location to search in or near
+        - name: radius
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+          description: Search radius in miles
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Service category (for contractors and helpers)
+        - name: rating
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+          description: Minimum rating
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rating, experience, distance, relevance]
+            default: relevance
+          description: Sort order
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Results per page
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PublicUserProfile'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  #==========================================================================
+  # Verification Endpoints
+  #==========================================================================
+  /verification/documents:
+    post:
+      tags:
+        - Verification
+      summary: Upload verification document
+      description: Upload a document for identity or business verification
+      operationId: uploadVerificationDocument
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - documentType
+                - file
+              properties:
+                documentType:
+                  type: string
+                  enum:
+                    - id_card
+                    - drivers_license
+                    - passport
+                    - business_license
+                    - insurance_certificate
+                    - certification
+                    - tax_document
+                  description: Type of document being uploaded
+                region:
+                  type: string
+                  description: State/region for license verification (if applicable)
+                expirationDate:
+                  type: string
+                  format: date
+                  description: Document expiration date (if applicable)
+                file:
+                  type: string
+                  format: binary
+                  description: Document file (PDF, JPG, PNG)
+      responses:
+        '201':
+          description: Document uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Document file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'File too large, max 10MB'
+                code: 'FILE_TOO_LARGE'
+  
+    get:
+      tags:
+        - Verification
+      summary: Get verification documents
+      description: Get the current user's uploaded verification documents
+      operationId: getVerificationDocuments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of verification documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VerificationDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /verification/documents/{documentId}:
+    get:
+      tags:
+        - Verification
+      summary: Get verification document
+      description: Get details of a specific verification document
+      operationId: getVerificationDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Document UUID
+      responses:
+        '200':
+          description: Verification document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags:
+        - Verification
+      summary: Delete verification document
+      description: Delete a verification document
+      operationId: deleteVerificationDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Document UUID
+      responses:
+        '204':
+          description: Document successfully deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /verification/status:
+    get:
+      tags:
+        - Verification
+      summary: Get verification status
+      description: Get the current user's verification status
+      operationId: getVerificationStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Verification status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /verification/background-check:
+    post:
+      tags:
+        - Verification
+      summary: Request background check
+      description: Initiate a background check for the current user
+      operationId: requestBackgroundCheck
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackgroundCheckRequest'
+      responses:
+        '201':
+          description: Background check initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundCheck'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Background check already in progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Background check already in progress'
+                code: 'BACKGROUND_CHECK_IN_PROGRESS'
+
+  /verification/background-check/status:
+    get:
+      tags:
+        - Verification
+      summary: Get background check status
+      description: Get the status of the current user's background check
+      operationId: getBackgroundCheckStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Background check status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No background check found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'No background check found'
+                code: 'BACKGROUND_CHECK_NOT_FOUND'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from login or refresh
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Invalid request parameters'
+            code: 'INVALID_REQUEST'
+            details:
+              email: 'Must be a valid email address'
+    
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Authentication required'
+            code: 'UNAUTHORIZED'
+    
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Permission denied'
+            code: 'FORBIDDEN'
+    
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Resource not found'
+            code: 'NOT_FOUND'
+    
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Time in seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: 'Too many requests, please try again later'
+            code: 'RATE_LIMIT'
+            retryAfter: 30
+
+  schemas:
+    Error:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Error code for programmatic handling
+        details:
+          type: object
+          description: Additional error details
+          additionalProperties: true
+
+    # Authentication schemas
+    UserRegistration:
+      type: object
+      required:
+        - email
+        - password
+        - userType
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          minLength: 10
+          description: Password (min 10 characters)
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        acceptedTerms:
+          type: boolean
+          description: Whether the user has accepted terms of service
+          default: false
+        marketingConsent:
+          type: boolean
+          description: Whether the user has consented to marketing communications
+          default: false
+        referralCode:
+          type: string
+          description: Referral code if referred by another user
+
+    RegistrationResponse:
+      type: object
+      required:
+        - id
+        - email
+        - userType
+        - requiresEmailVerification
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        requiresEmailVerification:
+          type: boolean
+          description: Whether email verification is required before login
+        requiresPhoneVerification:
+          type: boolean
+          description: Whether phone verification is required
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+          description: Authentication tokens (only if verification not required)
+
+    LoginCredentials:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+        mfaCode:
+          type: string
+          description: MFA verification code if MFA is enabled
+
+    AuthTokens:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: JWT refresh token
+        expiresIn:
+          type: integer
+          description: Access token expiration time in seconds
+        tokenType:
+          type: string
+          enum: [Bearer]
+          default: Bearer
+          description: Token type
+
+    RefreshResponse:
+      type: object
+      required:
+        - accessToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: New JWT access token
+        refreshToken:
+          type: string
+          description: New JWT refresh token (if refresh token rotation is enabled)
+        expiresIn:
+          type: integer
+          description: Access token expiration time in seconds
+        tokenType:
+          type: string
+          enum: [Bearer]
+          default: Bearer
+          description: Token type
+
+    # User schemas
+    UserDetails:
+      type: object
+      required:
+        - id
+        - email
+        - userType
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        emailVerified:
+          type: boolean
+          description: Whether email is verified
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        phoneVerified:
+          type: boolean
+          description: Whether phone is verified
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        verificationStatus:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+          description: User verification status
+        mfaEnabled:
+          type: boolean
+          description: Whether MFA is enabled
+        lastLoginAt:
+          type: string
+          format: date-time
+          description: Last login timestamp
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Account last update timestamp
+
+    UserUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+
+    DeviceSession:
+      type: object
+      required:
+        - id
+        - device
+        - location
+        - createdAt
+        - lastActiveAt
+      properties:
+        id:
+          type: string
+          description: Session identifier
+        device:
+          type: string
+          description: Device information
+        browser:
+          type: string
+          description: Browser information
+        operatingSystem:
+          type: string
+          description: Operating system information
+        location:
+          type: string
+          description: Geographic location
+        ip:
+          type: string
+          description: IP address
+        createdAt:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+        lastActiveAt:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+        current:
+          type: boolean
+          description: Whether this is the current session
+
+    # Profile schemas
+    UserProfile:
+      type: object
+      required:
+        - userId
+        - userType
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        address:
+          $ref: '#/components/schemas/Address'
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            center:
+              $ref: '#/components/schemas/GeoPoint'
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+        verificationBadges:
+          type: array
+          items:
+            type: string
+            enum: [identity, business, insurance, background_check, license]
+          description: Verification badges earned
+        averageRating:
+          type: number
+          minimum: 0
+          maximum: 5
+          description: Average rating (0-5)
+        reviewCount:
+          type: integer
+          description: Number of reviews
+        completedProjects:
+          type: integer
+          description: Number of completed projects
+        createdAt:
+          type: string
+          format: date-time
+          description: Profile creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Profile last update timestamp
+
+    PublicUserProfile:
+      type: object
+      required:
+        - userId
+        - userType
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            location:
+              type: string
+              description: General location description
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+        verificationBadges:
+          type: array
+          items:
+            type: string
+            enum: [identity, business, insurance, background_check, license]
+          description: Verification badges earned
+        averageRating:
+          type: number
+          minimum: 0
+          maximum: 5
+          description: Average rating (0-5)
+        reviewCount:
+          type: integer
+          description: Number of reviews
+        completedProjects:
+          type: integer
+          description: Number of completed projects
+        memberSince:
+          type: string
+          format: date
+          description: Date joined the platform
+
+    ProfileUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        address:
+          $ref: '#/components/schemas/Address'
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            center:
+              $ref: '#/components/schemas/GeoPoint'
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+
+    Address:
+      type: object
+      properties:
+        street1:
+          type: string
+          description: Street address line 1
+        street2:
+          type: string
+          description: Street address line 2
+        city:
+          type: string
+          description: City
+        state:
+          type: string
+          description: State/province
+        postalCode:
+          type: string
+          description: ZIP/postal code
+        country:
+          type: string
+          description: Country (ISO 3166-1 alpha-2)
+        formattedAddress:
+          type: string
+          description: Full formatted address
+        coordinates:
+          $ref: '#/components/schemas/GeoPoint'
+
+    GeoPoint:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+          description: Latitude in decimal degrees
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+          description: Longitude in decimal degrees
+
+    # Verification schemas
+    VerificationDocument:
+      type: object
+      required:
+        - id
+        - documentType
+        - status
+        - submittedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Document UUID
+        documentType:
+          type: string
+          enum:
+            - id_card
+            - drivers_license
+            - passport
+            - business_license
+            - insurance_certificate
+            - certification
+            - tax_document
+          description: Type of document
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired]
+          description: Verification status
+        submittedAt:
+          type: string
+          format: date-time
+          description: Submission timestamp
+        reviewedAt:
+          type: string
+          format: date-time
+          description: Review timestamp
+        expirationDate:
+          type: string
+          format: date
+          description: Document expiration date
+        region:
+          type: string
+          description: State/region for license verification
+        documentUrl:
+          type: string
+          format: uri
+          description: URL to access the document (for admins)
+        rejectionReason:
+          type: string
+          description: Reason for rejection, if rejected
+        verificationId:
+          type: string
+          description: External verification system ID
+
+    VerificationStatus:
+      type: object
+      required:
+        - overallStatus
+        - documentStatuses
+      properties:
+        overallStatus:
+          type: string
+          enum: [unverified, pending, partially_verified, verified, rejected]
+          description: Overall verification status
+        documentStatuses:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [missing, pending, approved, rejected, expired]
+          description: Status of each required document type
+        requiredDocuments:
+          type: array
+          items:
+            type: string
+          description: Documents required for verification based on user type
+        verificationCompletedAt:
+          type: string
+          format: date-time
+          description: When verification was completed
+        backgroundCheckStatus:
+          type: string
+          enum: [not_started, pending, completed, failed]
+          description: Status of background check
+
+    BackgroundCheckRequest:
+      type: object
+      required:
+        - consentToCheck
+        - dateOfBirth
+        - socialSecurityNumber
+      properties:
+        consentToCheck:
+          type: boolean
+          description: Consent to background check
+        dateOfBirth:
+          type: string
+          format: date
+          description: Date of birth
+        socialSecurityNumber:
+          type: string
+          description: Social Security Number (last 4 digits)
+        previousAddresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+          description: Previous addresses
+
+    BackgroundCheck:
+      type: object
+      required:
+        - id
+        - status
+        - requestedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Background check UUID
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, canceled]
+          description: Background check status
+        requestedAt:
+          type: string
+          format: date-time
+          description: Request timestamp
+        completedAt:
+          type: string
+          format: date-time
+          description: Completion timestamp
+        reportId:
+          type: string
+          description: External background check service report ID
+        reportUrl:
+          type: string
+          format: uri
+          description: URL to the report (if available)
+        resultSummary:
+          type: string
+          description: Summary of the background check result
+
+    # Team schemas
+    TeamCreate:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Team name
+        type:
+          type: string
+          enum: [contractor, property_manager]
+          description: Team type
+        description:
+          type: string
+          description: Team description
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamMemberAdd'
+          description: Initial team members
+
+    Team:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - ownerId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Team UUID
+        name:
+          type: string
+          description: Team name
+        type:
+          type: string
+          enum: [contractor, property_manager]
+          description: Team type
+        description:
+          type: string
+          description: Team description
+        ownerId:
+          type: string
+          format: uuid
+          description: Team owner's user ID
+        memberCount:
+          type: integer
+          description: Number of team members
+        createdAt:
+          type: string
+          format: date-time
+          description: Team creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Team last update timestamp
+
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Team name
+        description:
+          type: string
+          description: Team description
+        ownerId:
+          type: string
+          format: uuid
+          description: New team owner's user ID
+
+    TeamMemberAdd:
+      type: object
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          description: Team member's email address
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+
+    TeamMember:
+      type: object
+      required:
+        - userId
+        - email
+        - role
+        - status
+        - joinedAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+        status:
+          type: string
+          enum: [invited, active, suspended]
+          description: Membership status
+        joinedAt:
+          type: string
+          format: date-time
+          description: When the member joined the team
+        lastActiveAt:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+
+    TeamMemberUpdate:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+        status:
+          type: string
+          enum: [active, suspended]
+          description: Membership status
+
+    # Preferences schemas
+    UserPreferences:
+      type: object
+      properties:
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+        currency:
+          type: string
+          description: Preferred currency (ISO 4217 code)
+        distanceUnit:
+          type: string
+          enum: [miles, kilometers]
+          default: miles
+          description: Preferred distance unit
+        theme:
+          type: string
+          enum: [light, dark, system]
+          default: system
+          description: UI theme preference
+        notifications:
+          $ref: '#/components/schemas/NotificationPreferences'
+
+    UserPreferencesUpdate:
+      type: object
+      properties:
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+        currency:
+          type: string
+          description: Preferred currency (ISO 4217 code)
+        distanceUnit:
+          type: string
+          enum: [miles, kilometers]
+          description: Preferred distance unit
+        theme:
+          type: string
+          enum: [light, dark, system]
+          description: UI theme preference
+
+    NotificationPreferences:
+      type: object
+      properties:
+        email:
+          type: object
+          properties:
+            marketing:
+              type: boolean
+              default: true
+              description: Marketing emails
+            projectUpdates:
+              type: boolean
+              default: true
+              description: Project updates
+            bidActivity:
+              type: boolean
+              default: true
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              default: true
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              default: true
+              description: Account security alerts
+        push:
+          type: object
+          properties:
+            projectUpdates:
+              type: boolean
+              default: true
+              description: Project updates
+            bidActivity:
+              type: boolean
+              default: true
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              default: true
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              default: true
+              description: Account security alerts
+        sms:
+          type: object
+          properties:
+            projectUpdates:
+              type: boolean
+              default: false
+              description: Project updates
+            bidActivity:
+              type: boolean
+              default: false
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              default: false
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              default: true
+              description: Account security alerts
+
+    NotificationPreferencesUpdate:
+      type: object
+      properties:
+        email:
+          type: object
+          properties:
+            marketing:
+              type: boolean
+              description: Marketing emails
+            projectUpdates:
+              type: boolean
+              description: Project updates
+            bidActivity:
+              type: boolean
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              description: Account security alerts
+        push:
+          type: object
+          properties:
+            projectUpdates:
+              type: boolean
+              description: Project updates
+            bidActivity:
+              type: boolean
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              description: Account security alerts
+        sms:
+          type: object
+          properties:
+            projectUpdates:
+              type: boolean
+              description: Project updates
+            bidActivity:
+              type: boolean
+              description: Bid activity notifications
+            messages:
+              type: boolean
+              description: Message notifications
+            accountAlerts:
+              type: boolean
+              description: Account security alerts
+
+    Pagination:
+      type: object
+      required:
+        - page
+        - limit
+        - totalItems
+        - totalPages
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          description: Current page number
+        limit:
+          type: integer
+          minimum: 1
+          description: Number of items per page
+        totalItems:
+          type: integer
+          minimum: 0
+          description: Total number of items
+        totalPages:
+          type: integer
+          minimum: 0
+          description: Total number of pages
+        hasNextPage:
+          type: boolean
+          description: Whether there are more pages
+        hasPrevPage:
+          type: boolean
+          description: Whether there are previous pages
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Background check already in progress'
+                code: 'BACKGROUND_CHECK_IN_PROGRESS'
+
+  /verification/background-check/status:
+    get:
+      tags:
+        - Verification
+      summary: Get background check status
+      description: Get the status of the current user's background check
+      operationId: getBackgroundCheckStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Background check status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundCheck'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: No background check found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'No background check found'
+                code: 'BACKGROUND_CHECK_NOT_FOUND'
+
+  #==========================================================================
+  # Team Endpoints
+  #==========================================================================
+  /teams:
+    post:
+      tags:
+        - Teams
+      summary: Create team
+      description: Create a new team
+      operationId: createTeam
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreate'
+      responses:
+        '201':
+          description: Team created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    get:
+      tags:
+        - Teams
+      summary: Get teams
+      description: Get a list of teams the current user belongs to
+      operationId: getTeams
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of teams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Team'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /teams/{teamId}:
+    get:
+      tags:
+        - Teams
+      summary: Get team
+      description: Get details of a specific team
+      operationId: getTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+      responses:
+        '200':
+          description: Team details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      tags:
+        - Teams
+      summary: Update team
+      description: Update a team's information
+      operationId: updateTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamUpdate'
+      responses:
+        '200':
+          description: Team updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Team'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags:
+        - Teams
+      summary: Delete team
+      description: Delete a team
+      operationId: deleteTeam
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+      responses:
+        '204':
+          description: Team successfully deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /teams/{teamId}/members:
+    get:
+      tags:
+        - Teams
+      summary: Get team members
+      description: Get a list of team members
+      operationId: getTeamMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+      responses:
+        '200':
+          description: List of team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    post:
+      tags:
+        - Teams
+      summary: Add team member
+      description: Add a new member to the team
+      operationId: addTeamMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamMemberAdd'
+      responses:
+        '201':
+          description: Member added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Member already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'User is already a member of this team'
+                code: 'MEMBER_EXISTS'
+
+  /teams/{teamId}/members/{userId}:
+    patch:
+      tags:
+        - Teams
+      summary: Update team member
+      description: Update a team member's role or permissions
+      operationId: updateTeamMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamMemberUpdate'
+      responses:
+        '200':
+          description: Member updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags:
+        - Teams
+      summary: Remove team member
+      description: Remove a member from the team
+      operationId: removeTeamMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team UUID
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      responses:
+        '204':
+          description: Member successfully removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #==========================================================================
+  # Preferences Endpoints
+  #==========================================================================
+  /preferences:
+    get:
+      tags:
+        - Preferences
+      summary: Get user preferences
+      description: Get the current user's preferences
+      operationId: getUserPreferences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    put:
+      tags:
+        - Preferences
+      summary: Update user preferences
+      description: Update the current user's preferences
+      operationId: updateUserPreferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserPreferencesUpdate'
+      responses:
+        '200':
+          description: Preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /preferences/notifications:
+    get:
+      tags:
+        - Preferences
+      summary: Get notification preferences
+      description: Get the current user's notification preferences
+      operationId: getNotificationPreferences
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    put:
+      tags:
+        - Preferences
+      summary: Update notification preferences
+      description: Update the current user's notification preferences
+      operationId: updateNotificationPreferences
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesUpdate'
+      responses:
+        '200':
+          description: Notification preferences updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPreferences'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    # Authentication schemas
+    UserRegistration:
+      type: object
+      required:
+        - email
+        - password
+        - userType
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          minLength: 10
+          description: Password (min 10 characters)
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        acceptedTerms:
+          type: boolean
+          description: Whether the user has accepted terms of service
+          default: false
+        marketingConsent:
+          type: boolean
+          description: Whether the user has consented to marketing communications
+          default: false
+        referralCode:
+          type: string
+          description: Referral code if referred by another user
+
+    RegistrationResponse:
+      type: object
+      required:
+        - id
+        - email
+        - userType
+        - requiresEmailVerification
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        requiresEmailVerification:
+          type: boolean
+          description: Whether email verification is required before login
+        requiresPhoneVerification:
+          type: boolean
+          description: Whether phone verification is required
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+          description: Authentication tokens (only if verification not required)
+
+    LoginCredentials:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          format: password
+          description: User's password
+        mfaCode:
+          type: string
+          description: MFA verification code if MFA is enabled
+
+    AuthTokens:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token
+        refreshToken:
+          type: string
+          description: JWT refresh token
+        expiresIn:
+          type: integer
+          description: Access token expiration time in seconds
+        tokenType:
+          type: string
+          enum: [Bearer]
+          default: Bearer
+          description: Token type
+
+    RefreshResponse:
+      type: object
+      required:
+        - accessToken
+        - expiresIn
+      properties:
+        accessToken:
+          type: string
+          description: New JWT access token
+        refreshToken:
+          type: string
+          description: New JWT refresh token (if refresh token rotation is enabled)
+        expiresIn:
+          type: integer
+          description: Access token expiration time in seconds
+        tokenType:
+          type: string
+          enum: [Bearer]
+          default: Bearer
+          description: Token type
+
+    # User schemas
+    UserDetails:
+      type: object
+      required:
+        - id
+        - email
+        - userType
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        emailVerified:
+          type: boolean
+          description: Whether email is verified
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        phoneVerified:
+          type: boolean
+          description: Whether phone is verified
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        verificationStatus:
+          type: string
+          enum: [unverified, pending, verified, rejected]
+          description: User verification status
+        mfaEnabled:
+          type: boolean
+          description: Whether MFA is enabled
+        lastLoginAt:
+          type: string
+          format: date-time
+          description: Last login timestamp
+        createdAt:
+          type: string
+          format: date-time
+          description: Account creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Account last update timestamp
+
+    UserUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        phoneNumber:
+          type: string
+          description: Phone number in E.164 format
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+
+    DeviceSession:
+      type: object
+      required:
+        - id
+        - device
+        - location
+        - createdAt
+        - lastActiveAt
+      properties:
+        id:
+          type: string
+          description: Session identifier
+        device:
+          type: string
+          description: Device information
+        browser:
+          type: string
+          description: Browser information
+        operatingSystem:
+          type: string
+          description: Operating system information
+        location:
+          type: string
+          description: Geographic location
+        ip:
+          type: string
+          description: IP address
+        createdAt:
+          type: string
+          format: date-time
+          description: Session creation timestamp
+        lastActiveAt:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+        current:
+          type: boolean
+          description: Whether this is the current session
+
+    # Profile schemas
+    UserProfile:
+      type: object
+      required:
+        - userId
+        - userType
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        address:
+          $ref: '#/components/schemas/Address'
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            center:
+              $ref: '#/components/schemas/GeoPoint'
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+        verificationBadges:
+          type: array
+          items:
+            type: string
+            enum: [identity, business, insurance, background_check, license]
+          description: Verification badges earned
+        averageRating:
+          type: number
+          minimum: 0
+          maximum: 5
+          description: Average rating (0-5)
+        reviewCount:
+          type: integer
+          description: Number of reviews
+        completedProjects:
+          type: integer
+          description: Number of completed projects
+        createdAt:
+          type: string
+          format: date-time
+          description: Profile creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Profile last update timestamp
+
+    PublicUserProfile:
+      type: object
+      required:
+        - userId
+        - userType
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        userType:
+          type: string
+          enum: [homeowner, contractor, helper, property_manager]
+          description: Type of user account
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            location:
+              type: string
+              description: General location description
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+        verificationBadges:
+          type: array
+          items:
+            type: string
+            enum: [identity, business, insurance, background_check, license]
+          description: Verification badges earned
+        averageRating:
+          type: number
+          minimum: 0
+          maximum: 5
+          description: Average rating (0-5)
+        reviewCount:
+          type: integer
+          description: Number of reviews
+        completedProjects:
+          type: integer
+          description: Number of completed projects
+        memberSince:
+          type: string
+          format: date
+          description: Date joined the platform
+
+    ProfileUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        bio:
+          type: string
+          description: User's bio/description
+        companyName:
+          type: string
+          description: Company name (for contractors and property managers)
+        website:
+          type: string
+          format: uri
+          description: User's website
+        address:
+          $ref: '#/components/schemas/Address'
+        serviceArea:
+          type: object
+          properties:
+            radius:
+              type: number
+              description: Service radius in miles
+            center:
+              $ref: '#/components/schemas/GeoPoint'
+        specialties:
+          type: array
+          items:
+            type: string
+          description: User's specialties/categories
+        yearsInBusiness:
+          type: integer
+          description: Years in business (for contractors)
+        certifications:
+          type: array
+          items:
+            type: string
+          description: Professional certifications
+
+    Address:
+      type: object
+      properties:
+        street1:
+          type: string
+          description: Street address line 1
+        street2:
+          type: string
+          description: Street address line 2
+        city:
+          type: string
+          description: City
+        state:
+          type: string
+          description: State/province
+        postalCode:
+          type: string
+          description: ZIP/postal code
+        country:
+          type: string
+          description: Country (ISO 3166-1 alpha-2)
+        formattedAddress:
+          type: string
+          description: Full formatted address
+        coordinates:
+          $ref: '#/components/schemas/GeoPoint'
+
+    GeoPoint:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+          description: Latitude in decimal degrees
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+          description: Longitude in decimal degrees
+
+    # Verification schemas
+    VerificationDocument:
+      type: object
+      required:
+        - id
+        - documentType
+        - status
+        - submittedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Document UUID
+        documentType:
+          type: string
+          enum:
+            - id_card
+            - drivers_license
+            - passport
+            - business_license
+            - insurance_certificate
+            - certification
+            - tax_document
+          description: Type of document
+        status:
+          type: string
+          enum: [pending, approved, rejected, expired]
+          description: Verification status
+        submittedAt:
+          type: string
+          format: date-time
+          description: Submission timestamp
+        reviewedAt:
+          type: string
+          format: date-time
+          description: Review timestamp
+        expirationDate:
+          type: string
+          format: date
+          description: Document expiration date
+        region:
+          type: string
+          description: State/region for license verification
+        documentUrl:
+          type: string
+          format: uri
+          description: URL to access the document (for admins)
+        rejectionReason:
+          type: string
+          description: Reason for rejection, if rejected
+        verificationId:
+          type: string
+          description: External verification system ID
+
+    VerificationStatus:
+      type: object
+      required:
+        - overallStatus
+        - documentStatuses
+      properties:
+        overallStatus:
+          type: string
+          enum: [unverified, pending, partially_verified, verified, rejected]
+          description: Overall verification status
+        documentStatuses:
+          type: object
+          additionalProperties:
+            type: string
+            enum: [missing, pending, approved, rejected, expired]
+          description: Status of each required document type
+        requiredDocuments:
+          type: array
+          items:
+            type: string
+          description: Documents required for verification based on user type
+        verificationCompletedAt:
+          type: string
+          format: date-time
+          description: When verification was completed
+        backgroundCheckStatus:
+          type: string
+          enum: [not_started, pending, completed, failed]
+          description: Status of background check
+
+    BackgroundCheckRequest:
+      type: object
+      required:
+        - consentToCheck
+        - dateOfBirth
+        - socialSecurityNumber
+      properties:
+        consentToCheck:
+          type: boolean
+          description: Consent to background check
+        dateOfBirth:
+          type: string
+          format: date
+          description: Date of birth
+        socialSecurityNumber:
+          type: string
+          description: Social Security Number (last 4 digits)
+        previousAddresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+          description: Previous addresses
+
+    BackgroundCheck:
+      type: object
+      required:
+        - id
+        - status
+        - requestedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Background check UUID
+        status:
+          type: string
+          enum: [pending, in_progress, completed, failed, canceled]
+          description: Background check status
+        requestedAt:
+          type: string
+          format: date-time
+          description: Request timestamp
+        completedAt:
+          type: string
+          format: date-time
+          description: Completion timestamp
+        reportId:
+          type: string
+          description: External background check service report ID
+        reportUrl:
+          type: string
+          format: uri
+          description: URL to the report (if available)
+        resultSummary:
+          type: string
+          description: Summary of the background check result
+
+    # Team schemas
+    TeamCreate:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          description: Team name
+        type:
+          type: string
+          enum: [contractor, property_manager]
+          description: Team type
+        description:
+          type: string
+          description: Team description
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamMemberAdd'
+          description: Initial team members
+
+    Team:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - ownerId
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Team UUID
+        name:
+          type: string
+          description: Team name
+        type:
+          type: string
+          enum: [contractor, property_manager]
+          description: Team type
+        description:
+          type: string
+          description: Team description
+        ownerId:
+          type: string
+          format: uuid
+          description: Team owner's user ID
+        memberCount:
+          type: integer
+          description: Number of team members
+        createdAt:
+          type: string
+          format: date-time
+          description: Team creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Team last update timestamp
+
+    TeamUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Team name
+        description:
+          type: string
+          description: Team description
+        ownerId:
+          type: string
+          format: uuid
+          description: New team owner's user ID
+
+    TeamMemberAdd:
+      type: object
+      required:
+        - email
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          description: Team member's email address
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+
+    TeamMember:
+      type: object
+      required:
+        - userId
+        - email
+        - role
+        - status
+        - joinedAt
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User UUID
+        email:
+          type: string
+          format: email
+          description: User's email address
+        firstName:
+          type: string
+          description: User's first name
+        lastName:
+          type: string
+          description: User's last name
+        displayName:
+          type: string
+          description: User's display name
+        avatarUrl:
+          type: string
+          format: uri
+          description: URL of user's avatar
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+        status:
+          type: string
+          enum: [invited, active, suspended]
+          description: Membership status
+        joinedAt:
+          type: string
+          format: date-time
+          description: When the member joined the team
+        lastActiveAt:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+
+    TeamMemberUpdate:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [owner, admin, member]
+          description: Team member's role
+        permissions:
+          type: array
+          items:
+            type: string
+          description: Additional permissions
+        status:
+          type: string
+          enum: [active, suspended]
+          description: Membership status
+
+    # Preferences schemas
+    UserPreferences:
+      type: object
+      properties:
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+        currency:
+          type: string
+          description: Preferred currency (ISO 4217 code)
+        distanceUnit:
+          type: string
+          enum: [miles, kilometers]
+          default: miles
+          description: Preferred distance unit
+        theme:
+          type: string
+          enum: [light, dark, system]
+          default: system
+          description: UI theme preference
+        notifications:
+          $ref: '#/components/schemas/NotificationPreferences'
+
+    UserPreferencesUpdate:
+      type: object
+      properties:
+        language:
+          type: string
+          description: Preferred language (ISO 639-1 code)
+        timezone:
+          type: string
+          description: Preferred timezone (IANA format)
+        currency:
+          type: string
+          description: Preferred currency (ISO 4217 code)
+        distanceUnit:
+          type: string
+          enum: [miles, kilometers]
+          description: Preferred distance unit
+        theme:
+          type: string
+          enum: [light, dark, system]
+          description: UI theme preference
+
+    NotificationPreferences:
+      type: object
+      properties:
+        email:
+          type: object
+          properties:
+            marketing:
+              type: boolean
+              default: true
+              description: Marketing emails
+            projectUpdates:
+              type: boolean
+              default: true
+              description: Project updates
+            bidActivity:
+              type: boolean
+              default:
+openapi: 3.0.3
+info:
+  title: InstaBids User Management API
+  description: |
+    API for user management, authentication, profile management, and verification
+    in the InstaBids platform.
+  version: 1.0.0
+  contact:
+    name: InstaBids API Team
+    email: api@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://api-staging.instabids.com/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: Authentication
+    description: User authentication endpoints
+  - name: Users
+    description: User account management
+  - name: Profiles
+    description: User profile management
+  - name: Verification
+    description: User verification and document management
+  - name: Teams
+    description: Team and member management
+  - name: Preferences
+    description: User preferences and settings
+
+paths:
+  #==========================================================================
+  # Authentication Endpoints
+  #==========================================================================
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Create a new user account with email and password
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegistration'
+      responses:
+        '201':
+          description: User successfully registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Email already exists'
+                code: 'USER_EXISTS'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: User login
+      description: Authenticate a user with email and password
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginCredentials'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh auth tokens
+      description: Obtain a new access token using a refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+                  description: The refresh token received during login or previous refresh
+      responses:
+        '200':
+          description: Token refresh successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: User logout
+      description: Invalidate the user's current session and tokens
+      operationId: logoutUser
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Successfully logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Forgot password
+      description: Request a password reset link
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: Email address of the account
+      responses:
+        '200':
+          description: Password reset email sent if account exists
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password
+      description: Reset password using a valid reset token
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                  description: Password reset token received by email
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 10
+                  description: New password (min 10 characters)
+      responses:
+        '200':
+          description: Password successfully reset
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Invalid or expired token'
+                code: 'INVALID_TOKEN'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/verify-email:
+    post:
+      tags:
+        - Authentication
+      summary: Verify email
+      description: Verify user's email using a verification token
+      operationId: verifyEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: Email verification token
+      responses:
+        '200':
+          description: Email successfully verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Invalid or expired token'
+                code: 'INVALID_TOKEN'
+  
+  /auth/resend-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Resend verification email
+      description: Resend the email verification link
+      operationId: resendVerification
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Verification email sent
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/verify-phone:
+    post:
+      tags:
+        - Authentication
+      summary: Verify phone number
+      description: Verify user's phone number using a verification code
+      operationId: verifyPhone
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Phone verification code sent via SMS
+      responses:
+        '200':
+          description: Phone number successfully verified
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/send-phone-verification:
+    post:
+      tags:
+        - Authentication
+      summary: Send phone verification code
+      description: Send a verification code to the user's phone
+      operationId: sendPhoneVerification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phoneNumber
+              properties:
+                phoneNumber:
+                  type: string
+                  description: Phone number in E.164 format (e.g., +14155552671)
+                  pattern: '^\+[1-9]\d{1,14}$'
+      responses:
+        '200':
+          description: Verification code sent
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  
+  /auth/mfa/configure:
+    post:
+      tags:
+        - Authentication
+      summary: Configure MFA
+      description: Set up multi-factor authentication for a user
+      operationId: configureMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+              properties:
+                type:
+                  type: string
+                  enum: [totp, sms]
+                  description: Type of MFA to configure (authenticator app or SMS)
+      responses:
+        '200':
+          description: MFA configuration initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret:
+                    type: string
+                    description: TOTP secret (for authenticator app)
+                  qrCode:
+                    type: string
+                    format: uri
+                    description: QR code image URL (for authenticator app)
+                  phoneNumber:
+                    type: string
+                    description: Masked phone number (for SMS)
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/verify:
+    post:
+      tags:
+        - Authentication
+      summary: Verify MFA
+      description: Verify and activate MFA with a verification code
+      operationId: verifyMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  description: Verification code from authenticator app or SMS
+      responses:
+        '200':
+          description: MFA successfully configured
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recoveryCodes:
+                    type: array
+                    items:
+                      type: string
+                    description: Recovery codes for backup access
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/disable:
+    post:
+      tags:
+        - Authentication
+      summary: Disable MFA
+      description: Disable multi-factor authentication for a user
+      operationId: disableMfa
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+      responses:
+        '200':
+          description: MFA successfully disabled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/mfa/recovery:
+    post:
+      tags:
+        - Authentication
+      summary: Use MFA recovery code
+      description: Authenticate using a recovery code when MFA device is unavailable
+      operationId: mfaRecovery
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - recoveryCode
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User's email address
+                password:
+                  type: string
+                  format: password
+                  description: User's password
+                recoveryCode:
+                  type: string
+                  description: MFA recovery code
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /auth/social/{provider}:
+    get:
+      tags:
+        - Authentication
+      summary: Initiate social login
+      description: Start the social authentication flow with a provider
+      operationId: socialLogin
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, facebook, apple]
+          description: Social authentication provider
+      responses:
+        '302':
+          description: Redirect to provider's authentication page
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  
+  /auth/social/{provider}/callback:
+    get:
+      tags:
+        - Authentication
+      summary: Social login callback
+      description: Callback endpoint for social authentication
+      operationId: socialLoginCallback
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [google, facebook, apple]
+          description: Social authentication provider
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from provider
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: State parameter for CSRF protection
+      responses:
+        '302':
+          description: Redirect to frontend with tokens
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  
+  #==========================================================================
+  # User Endpoints
+  #==========================================================================
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user
+      description: Get the current authenticated user's information
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/{userId}:
+    get:
+      tags:
+        - Users
+      summary: Get user by ID
+      description: Get a user's public information by ID
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      tags:
+        - Users
+      summary: Update user
+      description: Update a user's account information
+      operationId: updateUser
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: User successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDetails'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /users/me/password:
+    put:
+      tags:
+        - Users
+      summary: Change password
+      description: Change the current user's password
+      operationId: changePassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - currentPassword
+                - newPassword
+              properties:
+                currentPassword:
+                  type: string
+                  format: password
+                  description: Current password
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 10
+                  description: New password (min 10 characters)
+      responses:
+        '200':
+          description: Password successfully changed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/me/email:
+    put:
+      tags:
+        - Users
+      summary: Change email
+      description: Initiate email change process
+      operationId: changeEmail
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - newEmail
+                - password
+              properties:
+                newEmail:
+                  type: string
+                  format: email
+                  description: New email address
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+      responses:
+        '200':
+          description: Email change initiated, verification required
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Email already exists'
+                code: 'EMAIL_EXISTS'
+  
+  /users/me/devices:
+    get:
+      tags:
+        - Users
+      summary: Get active devices
+      description: Get a list of active sessions and devices
+      operationId: getActiveDevices
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of active devices and sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /users/me/devices/{sessionId}:
+    delete:
+      tags:
+        - Users
+      summary: Revoke session
+      description: Revoke a specific session/device
+      operationId: revokeSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session identifier
+      responses:
+        '204':
+          description: Session successfully revoked
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /users/me/account:
+    delete:
+      tags:
+        - Users
+      summary: Delete account
+      description: Initiate account deletion process
+      operationId: deleteAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - password
+              properties:
+                password:
+                  type: string
+                  format: password
+                  description: Current password for verification
+                reason:
+                  type: string
+                  description: Reason for deletion (optional)
+      responses:
+        '200':
+          description: Account deletion initiated
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  #==========================================================================
+  # Profile Endpoints
+  #==========================================================================
+  /profiles/me:
+    get:
+      tags:
+        - Profiles
+      summary: Get current profile
+      description: Get the current user's profile information
+      operationId: getCurrentProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Profile not found or not created yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'Profile not found'
+                code: 'PROFILE_NOT_FOUND'
+    
+    put:
+      tags:
+        - Profiles
+      summary: Update profile
+      description: Update or create the current user's profile
+      operationId: updateProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileUpdate'
+      responses:
+        '200':
+          description: Profile successfully updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /profiles/{userId}:
+    get:
+      tags:
+        - Profiles
+      summary: Get user profile
+      description: Get a user's public profile information
+      operationId: getUserProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: User UUID
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /profiles/me/avatar:
+    post:
+      tags:
+        - Profiles
+      summary: Upload avatar
+      description: Upload or update the user's profile picture
+      operationId: uploadAvatar
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file (JPEG, PNG, WebP)
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatarUrl:
+                    type: string
+                    format: uri
+                    description: URL of the uploaded avatar
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Image file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'File too large, max 5MB'
+                code: 'FILE_TOO_LARGE'
+  
+  /profiles/{userType}/search:
+    get:
+      tags:
+        - Profiles
+      summary: Search profiles
+      description: Search for user profiles by type and criteria
+      operationId: searchProfiles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [homeowner, contractor, helper, property_manager]
+          description: Type of users to search for
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Search query for name, company, etc.
+        - name: location
+          in: query
+          schema:
+            type: string
+          description: Location to search in or near
+        - name: radius
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 100
+          description: Search radius in miles
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Service category (for contractors and helpers)
+        - name: rating
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+          description: Minimum rating
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [rating, experience, distance, relevance]
+            default: relevance
+          description: Sort order
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          description: Results per page
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profiles:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PublicUserProfile'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  #==========================================================================
+  # Verification Endpoints
+  #==========================================================================
+  /verification/documents:
+    post:
+      tags:
+        - Verification
+      summary: Upload verification document
+      description: Upload a document for identity or business verification
+      operationId: uploadVerificationDocument
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - documentType
+                - file
+              properties:
+                documentType:
+                  type: string
+                  enum:
+                    - id_card
+                    - drivers_license
+                    - passport
+                    - business_license
+                    - insurance_certificate
+                    - certification
+                    - tax_document
+                  description: Type of document being uploaded
+                region:
+                  type: string
+                  description: State/region for license verification (if applicable)
+                expirationDate:
+                  type: string
+                  format: date
+                  description: Document expiration date (if applicable)
+                file:
+                  type: string
+                  format: binary
+                  description: Document file (PDF, JPG, PNG)
+      responses:
+        '201':
+          description: Document uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: Document file too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'File too large, max 10MB'
+                code: 'FILE_TOO_LARGE'
+  
+    get:
+      tags:
+        - Verification
+      summary: Get verification documents
+      description: Get the current user's uploaded verification documents
+      operationId: getVerificationDocuments
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of verification documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VerificationDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /verification/documents/{documentId}:
+    get:
+      tags:
+        - Verification
+      summary: Get verification document
+      description: Get details of a specific verification document
+      operationId: getVerificationDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Document UUID
+      responses:
+        '200':
+          description: Verification document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags:
+        - Verification
+      summary: Delete verification document
+      description: Delete a verification document
+      operationId: deleteVerificationDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Document UUID
+      responses:
+        '204':
+          description: Document successfully deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  
+  /verification/status:
+    get:
+      tags:
+        - Verification
+      summary: Get verification status
+      description: Get the current user's verification status
+      operationId: getVerificationStatus
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Verification status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /verification/background-check:
+    post:
+      tags:
+        - Verification
+      summary: Request background check
+      description: Initiate a background check for the current user
+      operationId: requestBackgroundCheck
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackgroundCheckRequest'
+      responses:
+        '201':
+          description: Background check initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackgroundCheck'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Background check already in progress
+          content:
+            application/json:

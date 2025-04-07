@@ -1,0 +1,1150 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Messaging API
+  description: |
+    API for the InstaBids messaging system. This API facilitates communication between platform users,
+    including homeowners, contractors, and system administrators. It supports direct messaging,
+    project-related discussions, bid-related communications, and system notifications.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production server
+  - url: https://staging-api.instabids.com/v1
+    description: Staging server
+  - url: https://dev-api.instabids.com/v1
+    description: Development server
+
+tags:
+  - name: Message Threads
+    description: Operations for managing conversation threads
+  - name: Messages
+    description: Operations for sending and managing messages
+  - name: Attachments
+    description: Operations for handling message attachments
+  - name: Read Receipts
+    description: Operations for tracking message read status
+  - name: Notifications
+    description: Operations for system notifications
+  - name: Search
+    description: Operations for searching through messages
+  - name: Moderation
+    description: Operations for content moderation
+
+paths:
+  #-------------------------------------------------------------------------
+  # Message Threads
+  #-------------------------------------------------------------------------
+  /message-threads:
+    get:
+      summary: Get user's message threads
+      description: Retrieves the message threads that the authenticated user is a participant in.
+      operationId: getMessageThreads
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: type
+          in: query
+          description: Filter by thread type
+          schema:
+            type: string
+            enum: [direct, project, bid, group, system]
+        - name: status
+          in: query
+          description: Filter by thread status
+          schema:
+            type: string
+            enum: [active, inactive, archived, resolved, blocked]
+        - name: relatedEntityId
+          in: query
+          description: Related entity ID (project ID, bid ID, etc.)
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of threads to return
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 50
+        - name: offset
+          in: query
+          description: Number of threads to skip
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        '200':
+          description: List of message threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MessageThread'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a new message thread
+      description: Creates a new message thread between users. This is used for direct messaging between users, not for project or bid-related threads, which are created automatically.
+      operationId: createMessageThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageThreadCreate'
+      responses:
+        '201':
+          description: Message thread created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageThread'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Thread already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "A thread already exists between these users"
+                  existingThreadId:
+                    type: string
+                    format: uuid
+                    example: "123e4567-e89b-12d3-a456-426614174000"
+
+  /message-threads/{threadId}:
+    get:
+      summary: Get a message thread
+      description: Retrieves a specific message thread by its ID.
+      operationId: getMessageThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Message thread details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageThread'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Update a message thread
+      description: Updates the properties of a message thread, such as status or metadata.
+      operationId: updateMessageThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageThreadUpdate'
+      responses:
+        '200':
+          description: Message thread updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageThread'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/participants:
+    get:
+      summary: Get thread participants
+      description: Retrieves the list of participants in a message thread.
+      operationId: getThreadParticipants
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of thread participants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ThreadParticipant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Add participant to thread
+      description: Adds a new participant to a group message thread.
+      operationId: addThreadParticipant
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - userId
+              properties:
+                userId:
+                  type: string
+                  format: uuid
+                  description: ID of the user to add to the thread
+                role:
+                  type: string
+                  enum: [member, admin, readonly]
+                  default: member
+                  description: Role of the user in the thread
+      responses:
+        '201':
+          description: Participant added to thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ThreadParticipant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: User already in thread
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "User is already a participant in this thread"
+
+  /message-threads/{threadId}/participants/{userId}:
+    delete:
+      summary: Remove participant from thread
+      description: Removes a participant from a group message thread.
+      operationId: removeThreadParticipant
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          description: ID of the user to remove from the thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Participant removed from thread
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/mute:
+    post:
+      summary: Mute a message thread
+      description: Mutes notifications for a message thread for the authenticated user.
+      operationId: muteThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                duration:
+                  type: integer
+                  description: Duration in minutes to mute the thread (optional, default is permanent)
+                  example: 1440
+      responses:
+        '200':
+          description: Thread muted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  mutedUntil:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: Time until which the thread is muted (null if permanent)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/unmute:
+    post:
+      summary: Unmute a message thread
+      description: Unmutes notifications for a message thread for the authenticated user.
+      operationId: unmuteThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread unmuted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/archive:
+    post:
+      summary: Archive a message thread
+      description: Archives a message thread for the authenticated user.
+      operationId: archiveThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/unarchive:
+    post:
+      summary: Unarchive a message thread
+      description: Unarchives a message thread for the authenticated user.
+      operationId: unarchiveThread
+      tags:
+        - Message Threads
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread unarchived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Messages
+  #-------------------------------------------------------------------------
+  /messages:
+    post:
+      summary: Send a message
+      description: Sends a new message in an existing thread.
+      operationId: sendMessage
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessageCreate'
+      responses:
+        '201':
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Content moderation rejection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Message content violates content policy"
+                  moderationDetails:
+                    type: object
+                    properties:
+                      reason:
+                        type: string
+                        example: "Prohibited content detected"
+                      severity:
+                        type: string
+                        enum: [low, medium, high]
+                        example: "medium"
+
+  /message-threads/{threadId}/messages:
+    get:
+      summary: Get messages in a thread
+      description: Retrieves messages from a specific thread with pagination.
+      operationId: getMessages
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of messages to return
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: before
+          in: query
+          description: Cursor for pagination (message ID to fetch messages before)
+          schema:
+            type: string
+            format: uuid
+        - name: after
+          in: query
+          description: Cursor for pagination (message ID to fetch messages after)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  cursor:
+                    type: object
+                    properties:
+                      nextCursor:
+                        type: string
+                        nullable: true
+                        description: Cursor to fetch next page of messages
+                      prevCursor:
+                        type: string
+                        nullable: true
+                        description: Cursor to fetch previous page of messages
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /messages/{messageId}:
+    get:
+      summary: Get a message
+      description: Retrieves a specific message by its ID.
+      operationId: getMessage
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Message details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      summary: Edit a message
+      description: Edits the content of an existing message (only possible for messages sent by the authenticated user and within a time limit).
+      operationId: editMessage
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                content:
+                  type: string
+                  description: New content for the message
+                  maxLength: 4000
+      responses:
+        '200':
+          description: Message edited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Edit time limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Message edit time limit (15 minutes) has been exceeded"
+        '422':
+          description: Content moderation rejection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "Message content violates content policy"
+    delete:
+      summary: Delete a message
+      description: Deletes a message (only possible for messages sent by the authenticated user or by thread administrators).
+      operationId: deleteMessage
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Message deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /messages/{messageId}/reactions:
+    post:
+      summary: Add a reaction to a message
+      description: Adds an emoji reaction to a message.
+      operationId: addMessageReaction
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reactionType
+              properties:
+                reactionType:
+                  type: string
+                  description: Type of reaction (emoji code)
+                  example: "thumbs_up"
+      responses:
+        '201':
+          description: Reaction added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageReaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Reaction already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "User has already added this reaction to the message"
+    get:
+      summary: Get message reactions
+      description: Retrieves all reactions for a specific message.
+      operationId: getMessageReactions
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of reactions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MessageReaction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /messages/{messageId}/reactions/{reactionType}:
+    delete:
+      summary: Remove a reaction from a message
+      description: Removes a specific reaction added by the authenticated user from a message.
+      operationId: removeMessageReaction
+      tags:
+        - Messages
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: reactionType
+          in: path
+          description: Type of reaction (emoji code)
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Reaction removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /messages/{messageId}/read:
+    post:
+      summary: Mark a message as read
+      description: Marks a message and all previous messages in the thread as read by the authenticated user.
+      operationId: markMessageRead
+      tags:
+        - Read Receipts
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Message marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  markedCount:
+                    type: integer
+                    description: Number of messages marked as read
+                    example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /message-threads/{threadId}/read:
+    post:
+      summary: Mark thread as read
+      description: Marks all messages in a thread as read by the authenticated user.
+      operationId: markThreadRead
+      tags:
+        - Read Receipts
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: threadId
+          in: path
+          description: ID of the message thread
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Thread marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  markedCount:
+                    type: integer
+                    description: Number of messages marked as read
+                    example: 15
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /messages/{messageId}/reads:
+    get:
+      summary: Get read receipts for a message
+      description: Retrieves the read receipts for a specific message.
+      operationId: getMessageReadReceipts
+      tags:
+        - Read Receipts
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: messageId
+          in: path
+          description: ID of the message
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of read receipts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MessageRead'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #-------------------------------------------------------------------------
+  # Attachments
+  #-------------------------------------------------------------------------
+  /attachments:
+    post:
+      summary: Upload an attachment
+      description: Uploads a file attachment that can be included in messages.
+      operationId: uploadAttachment
+      tags:
+        - Attachments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The file to upload
+                threadId:
+                  type: string
+                  format: uuid
+                  description: The ID of the thread where the attachment will be used (for validation)
+      responses:
+        '201':
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageAttachment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "File size exceeds the maximum allowed limit (10MB)"
+        '415':
+          description: Unsupported media type
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: "File type not supported"
+
+  /attachments/{attachmentId}:
+    get:
+      summary: Get attachment details
+      description: Retrieves details for a specific attachment.
+      operationId: getAttachment
+      tags:
+        - Attachments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: attachmentId
+          in: path
+          description: ID of the attachment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Attachment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MessageAttachment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete an attachment
+      description: Deletes an attachment (only if it hasn't been sent in a message yet or if you are the sender of the associated message).
+      operationId: deleteAttachment
+      tags:
+        - Attachments
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformParam'
+        - name: attachmentId
+          in: path
+          description: ID of the attachment
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Attachment deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $

@@ -1,0 +1,1090 @@
+openapi: 3.0.0
+info:
+  title: InstaBids Bidding System API
+  description: |
+    API specification for the InstaBids Bidding System. This API handles the creation and management of 
+    bid cards, contractor bids, bid acceptance, connection payments, and group bidding functionality.
+  version: 1.0.0
+  contact:
+    name: InstaBids Engineering Team
+    email: engineering@instabids.com
+servers:
+  - url: https://api.instabids.com/v1
+    description: Production API Server
+  - url: https://api-staging.instabids.com/v1
+    description: Staging API Server
+  - url: https://api-dev.instabids.com/v1
+    description: Development API Server
+  - url: http://localhost:3000/v1
+    description: Local Development
+
+tags:
+  - name: Bid Cards
+    description: Bid card creation and management operations
+  - name: Bids
+    description: Contractor bid submission and management
+  - name: Bid Acceptance
+    description: Bid acceptance and connection payment operations
+  - name: Group Bidding
+    description: Group bidding functionality for similar projects
+  - name: Bid Revisions
+    description: Bid card and bid revision operations
+
+paths:
+  #==========================================================================
+  # Bid Cards Endpoints
+  #==========================================================================
+  /bid-cards:
+    get:
+      summary: List bid cards
+      description: |
+        Retrieves a list of bid cards based on specified filters. Results can be filtered by
+        status, job type, location, and other parameters. Pagination is supported.
+      operationId: listBidCards
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Filter by bid card status
+          schema:
+            type: string
+            enum: [draft, open, review, negotiation, awarded, in_progress, completed, cancelled, expired]
+        - name: jobCategoryId
+          in: query
+          description: Filter by job category ID
+          schema:
+            type: string
+            format: uuid
+        - name: jobTypeId
+          in: query
+          description: Filter by job type ID
+          schema:
+            type: string
+            format: uuid
+        - name: zipCode
+          in: query
+          description: Filter by ZIP code
+          schema:
+            type: string
+        - name: radius
+          in: query
+          description: Search radius in miles from zip code
+          schema:
+            type: number
+            format: float
+            minimum: 0
+            maximum: 100
+        - name: groupEligible
+          in: query
+          description: Filter by group eligibility
+          schema:
+            type: boolean
+        - name: creatorId
+          in: query
+          description: Filter by creator user ID
+          schema:
+            type: string
+            format: uuid
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_desc, created_asc, deadline_asc, deadline_desc, budget_asc, budget_desc]
+            default: created_desc
+      responses:
+        '200':
+          description: List of bid cards retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BidCard'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    post:
+      summary: Create a new bid card
+      description: |
+        Creates a new bid card. The bid card can be created as a draft or published immediately.
+        Media files should be uploaded separately using the /files/upload endpoint and referenced
+        in the bid card media attribute.
+      operationId: createBidCard
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidCardCreate'
+      responses:
+        '201':
+          description: Bid card created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /bid-cards/{bidCardId}:
+    get:
+      summary: Get bid card details
+      description: |
+        Retrieves detailed information about a specific bid card, including
+        its media attachments, current bids, and other related data.
+      operationId: getBidCard
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+        - name: includeMedia
+          in: query
+          description: Include media attachments
+          schema:
+            type: boolean
+            default: true
+        - name: includeBids
+          in: query
+          description: Include bids submitted for this bid card
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Bid card details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCardWithDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update a bid card
+      description: |
+        Updates an existing bid card. Partial updates are supported.
+        Creating a new revision is required for certain types of changes after bids have been received.
+      operationId: updateBidCard
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+        - name: createRevision
+          in: query
+          description: Create a new revision for this change
+          schema:
+            type: boolean
+            default: false
+        - name: revisionType
+          in: query
+          description: Type of revision to create if createRevision is true
+          schema:
+            type: string
+            enum: [minor, major]
+            default: minor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidCardUpdate'
+      responses:
+        '200':
+          description: Bid card updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Conflict - cannot update without creating a revision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete a bid card
+      description: |
+        Deletes a bid card. Only draft bid cards can be deleted completely.
+        Published bid cards with no bids can be cancelled instead.
+      operationId: deleteBidCard
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Bid card deleted successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot delete - bid card has bids
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bid-cards/{bidCardId}/media:
+    get:
+      summary: Get bid card media
+      description: Retrieves all media attachments for a specific bid card
+      operationId: getBidCardMedia
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+        - name: mediaType
+          in: query
+          description: Filter by media type
+          schema:
+            type: string
+            enum: [photo, video, document, measurement]
+      responses:
+        '200':
+          description: Media attachments retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BidCardMedia'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Add media to bid card
+      description: |
+        Adds media attachments to a bid card. Media files should be uploaded 
+        separately using the /files/upload endpoint and referenced here.
+      operationId: addBidCardMedia
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidCardMediaAdd'
+      responses:
+        '201':
+          description: Media attachment added successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCardMedia'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bid-cards/{bidCardId}/media/{mediaId}:
+    delete:
+      summary: Remove media from bid card
+      description: Removes a media attachment from a bid card
+      operationId: removeBidCardMedia
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+        - name: mediaId
+          in: path
+          required: true
+          description: The ID of the media attachment
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Media attachment removed successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bid-cards/{bidCardId}/status:
+    put:
+      summary: Update bid card status
+      description: |
+        Updates the status of a bid card. This endpoint handles specific
+        status transitions like publishing, cancelling, or completing.
+      operationId: updateBidCardStatus
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [open, cancelled, completed]
+                  description: New status for the bid card
+                reason:
+                  type: string
+                  description: Reason for the status change (required for cancellation)
+      responses:
+        '200':
+          description: Bid card status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bid-cards/{bidCardId}/visibility:
+    put:
+      summary: Update bid card visibility
+      description: |
+        Updates the visibility settings of a bid card (public, private, or group).
+      operationId: updateBidCardVisibility
+      tags:
+        - Bid Cards
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - visibility
+              properties:
+                visibility:
+                  type: string
+                  enum: [public, private, group]
+                  description: New visibility setting
+      responses:
+        '200':
+          description: Bid card visibility updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  #==========================================================================
+  # Bids Endpoints
+  #==========================================================================
+  /bids:
+    get:
+      summary: List bids
+      description: |
+        Retrieves a list of bids submitted by the current contractor user or
+        bids submitted to bid cards created by the current homeowner user.
+      operationId: listBids
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: bidCardId
+          in: query
+          description: Filter by bid card ID
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by bid status
+          schema:
+            type: string
+            enum: [submitted, viewed, shortlisted, accepted, declined, expired, withdrawn]
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_desc, created_asc, amount_asc, amount_desc]
+            default: created_desc
+      responses:
+        '200':
+          description: List of bids retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bid'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /bid-cards/{bidCardId}/bids:
+    get:
+      summary: List bids for a bid card
+      description: |
+        Retrieves all bids submitted for a specific bid card. Only accessible
+        by the bid card creator or administrators.
+      operationId: listBidsForBidCard
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          description: Filter by bid status
+          schema:
+            type: string
+            enum: [submitted, viewed, shortlisted, accepted, declined, expired, withdrawn]
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_desc, created_asc, amount_asc, amount_desc]
+            default: amount_asc
+      responses:
+        '200':
+          description: List of bids retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bid'
+                  bidCard:
+                    $ref: '#/components/schemas/BidCard'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    post:
+      summary: Submit a bid for a bid card
+      description: |
+        Submits a new bid for a specific bid card. Only contractors can submit bids.
+        Contractors can only submit one bid per bid card unless specifically invited to rebid.
+      operationId: createBid
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidCardId
+          in: path
+          required: true
+          description: The ID of the bid card
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidCreate'
+      responses:
+        '201':
+          description: Bid submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bid'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Contractor already submitted a bid for this bid card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Bid card not open for bids
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bids/{bidId}:
+    get:
+      summary: Get bid details
+      description: |
+        Retrieves detailed information about a specific bid, including
+        the contractor profile and related data.
+      operationId: getBid
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          description: The ID of the bid
+          schema:
+            type: string
+            format: uuid
+        - name: includeContractor
+          in: query
+          description: Include contractor profile information
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Bid details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidWithDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update a bid
+      description: |
+        Updates an existing bid. Contractors can only update their own bids
+        and only if the bid has not been accepted yet.
+      operationId: updateBid
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          description: The ID of the bid
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidUpdate'
+      responses:
+        '200':
+          description: Bid updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bid'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot update bid in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bids/{bidId}/status:
+    put:
+      summary: Update bid status
+      description: |
+        Updates the status of a bid. This endpoint handles specific status
+        transitions like shortlisting, accepting, or declining a bid.
+      operationId: updateBidStatus
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          description: The ID of the bid
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [viewed, shortlisted, accepted, declined, withdrawn]
+                  description: New status for the bid
+                reason:
+                  type: string
+                  description: Reason for the status change (required for declining)
+      responses:
+        '200':
+          description: Bid status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bid'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bids/{bidId}/withdraw:
+    post:
+      summary: Withdraw a bid
+      description: |
+        Withdraws a submitted bid. Only the contractor who submitted the bid can withdraw it,
+        and only if the bid has not been accepted.
+      operationId: withdrawBid
+      tags:
+        - Bids
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          description: The ID of the bid
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for withdrawing the bid
+      responses:
+        '200':
+          description: Bid withdrawn successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bid'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot withdraw bid in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  #==========================================================================
+  # Bid Acceptance Endpoints
+  #==========================================================================
+  /bids/{bidId}/accept:
+    post:
+      summary: Accept a bid
+      description: |
+        Accepts a bid submitted for a bid card. This initiates the connection payment process.
+        Only the creator of the bid card can accept a bid.
+      operationId: acceptBid
+      tags:
+        - Bid Acceptance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: bidId
+          in: path
+          required: true
+          description: The ID of the bid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: Bid acceptance created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidAcceptance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Another bid has already been accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bid-acceptances/{acceptanceId}/payment:
+    post:
+      summary: Process connection payment
+      description: |
+        Processes the connection payment for an accepted bid. The contractor
+        must pay the connection fee to connect with the homeowner.
+      operationId: processConnectionPayment
+      tags:
+        - Bid Acceptance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: acceptanceId
+          in: path
+          required: true
+          description: The ID of the bid acceptance
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionPaymentRequest'
+      responses:
+        '201':
+          description: Payment processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionPayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Payment already processed or acceptance expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Payment processing failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bid-acceptances/{acceptanceId}/contact:
+    get:
+      summary: Get contact information
+      description: |
+        Retrieves the contact information exchange for a successful bid connection.
+        Only available after the connection payment has been processed.
+      operationId: getContactInformation
+      tags:
+        - Bid Acceptance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: acceptanceId
+          in: path
+          required: true
+          description: The ID of the bid acceptance
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Contact information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactRelease'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Connection payment not completed yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bid-acceptances/{acceptanceId}/cancel:
+    post:
+      summary: Cancel a bid acceptance
+      description: |
+        Cancels a bid acceptance. Only the bid card creator can cancel an acceptance,
+        and only if the connection payment has not been processed yet.
+      operationId: cancelBidAcceptance
+      tags:
+        - Bid Acceptance
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: acceptanceId
+          in: path
+          required: true
+          description: The ID of the bid acceptance
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Reason for cancelling the acceptance
+      responses:
+        '200':
+          description: Bid acceptance cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidAcceptance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Cannot cancel acceptance in current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  #==========================================================================
+  # Group Bidding Endpoints
+  #==========================================================================
+  /bid-groups:
+    get:
+      summary: List bid groups
+      description: |
+        Retrieves a list of bid groups. Results can be filtered by various parameters.
+      operationId: listBidGroups
+      tags:
+        - Group Bidding
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: zipCode
+          in: query
+          description: Filter by ZIP code
+          schema:
+            type: string
+        - name: jobCategoryId
+          in: query
+          description: Filter by job category ID
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          description: Filter by bid group status
+          schema:
+            type: string
+            enum: [forming, active, bidding, pending_acceptance, completed, expired]
+        - name: sort
+          in: query
+          description: Sort order
+          schema:
+            type: string
+            enum: [created_desc, created_asc, deadline_asc, deadline_desc]
+            default: created_desc
