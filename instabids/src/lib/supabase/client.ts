@@ -2,23 +2,26 @@
  * Client-side Supabase client
  * For use in Client Components with "use client" directive
  */
-import { createBrowserClient } from '@supabase/ssr';
-import { createMockSupabaseClient } from './mock-client';
+import { createClient as createBrowserClient } from '@supabase/supabase-js';
 
-export function createClient() {
-  // Check if Supabase environment variables are available
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  ) {
-    // Fall back to mock client for development/testing
-    console.warn('⚠️ Using mock Supabase client - no environment variables found');
-    return createMockSupabaseClient();
-  }
+// Standard client for regular auth operations
+export const createClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
-  // Use real Supabase client if environment variables are available
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  );
-}
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Missing Supabase credentials. Please check your .env.local file.');
+  }
+
+  return createBrowserClient(supabaseUrl, supabaseKey, {
+    auth: {
+      persistSession: true,
+      storageKey: 'instabids-auth-token',
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+};
+
+// Export singleton instance for consistent usage
+export const supabase = createClient();
