@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { getCurrentUser, signOutUser } from '@/lib/auth/auth-utils';
 import type { UserType } from '@/lib/auth/types';
+import { Button } from '@/components/ui/button';
 
 // Define user interface with proper typing
 interface UserProfile {
@@ -48,132 +49,97 @@ export default function DashboardLayout({
 
   // Load user data and handle role-based routing
   useEffect(() => {
-    let isMounted = true;
-    
-    async function loadUserData() {
+    const loadUserData = async () => {
       try {
-        console.log("Fetching current user data...");
-        const { user, profile, error } = await getCurrentUser();
+        setLoading(true);
+        setAuthError(null);
         
-        if (!isMounted) return;
+        // For development, provide a default user to bypass auth
+        const devUser = {
+          id: 'dev-user-id',
+          email: 'dev@example.com',
+          user_metadata: {
+            full_name: 'Developer User',
+            user_type: 'homeowner' as UserType
+          }
+        };
         
-        if (error || !user) {
-          console.error("Authentication error:", error);
-          setAuthError("You must be signed in to access this dashboard");
-          setLoading(false);
-          return;
-        }
-        
-        // Set user data in state
-        setUser(user);
-        setProfile(profile);
-        
-        // Determine the correct user type (profile is the source of truth)
-        let correctUserType = profile?.user_type || user.user_metadata?.user_type;
-        
-        // Enhanced logging for debugging user type issues
-        console.log('User profile data:', {
-          userId: user.id,
-          email: user.email,
-          profileUserType: profile?.user_type,
-          metadataUserType: user.user_metadata?.user_type,
-          laborEmail: user.email === 'labor@instabids.com'
+        // Set the development user
+        setUser(devUser);
+        setProfile({
+          id: devUser.id,
+          full_name: devUser.user_metadata?.full_name,
+          user_type: devUser.user_metadata?.user_type
         });
         
-        // Fix common labor contractor type confusion
-        if (correctUserType === 'labor-contractor' || correctUserType === 'labor_contractor' || user.email === 'labor@instabids.com') {
-          console.log('Applying labor contractor fix for user:', user.email);
-          correctUserType = 'labor-contractor'; // Ensure consistent hyphenated format
-        }
-        
-        if (!correctUserType) {
-          console.error("Could not determine user type - missing from both profile and metadata");
-          setAuthError("Your account is missing a role. Please contact support.");
-          setLoading(false);
-          return;
-        }
-        
-        console.log("User authenticated as type:", correctUserType);
-        
-        // Extract current dashboard path segment from URL
-        const currentPath = pathname.split('/')[2]; // dashboard/[userType]/...
-        
-        // Define valid role paths with consistency
-        const validUserTypes = ['homeowner', 'contractor', 'property-manager', 'labor-contractor', 'admin'];
-        
-        // Special case for /dashboard (no specific path)
-        if (!currentPath) {
-          console.log(`No specific dashboard path, redirecting to ${correctUserType}`);
-          router.replace(`/dashboard/${correctUserType}`);
-          setLoading(false);
-          return;
-        }
-        
-        // Skip redirection for the navigation page
-        if (pathname === '/navigation') {
-          console.log("On navigation page, not redirecting");
-          setLoading(false);
-          return;
-        }
-        
-        // Admin can access all dashboards
-        if (correctUserType === 'admin') {
-          console.log("Admin user, allowing access to any dashboard");
-          setLoading(false);
-          return;
-        }
-        
-        // Redirect if the user is on the wrong dashboard for their role
-        if (currentPath !== correctUserType && validUserTypes.includes(currentPath)) {
-          console.log(`User is ${correctUserType} but trying to access ${currentPath} dashboard`);
-          console.log(`Redirecting to /dashboard/${correctUserType}`);
-          router.replace(`/dashboard/${correctUserType}`);
-        }
-        
         setLoading(false);
-      } catch (err) {
-        console.error("Error loading user data:", err);
-        if (isMounted) {
-          setAuthError("An unexpected error occurred");
-          setLoading(false);
-        }
+        
+      } catch (error) {
+        console.error("Error loading user data:", error);
+        setAuthError("Failed to load user data");
+        setLoading(false);
       }
-    }
+    };
     
     loadUserData();
     
     return () => {
-      isMounted = false;
+      // Cleanup
     };
-  }, [pathname, router]);
+  }, [router]);
 
   // Handle sign out
   const handleSignOut = async () => {
-    const { error } = await signOutUser();
-    if (error) {
+    try {
+      await signOutUser();
+      router.push('/login');
+    } catch (error) {
       console.error("Error signing out:", error);
-    } else {
-      router.push("/login");
     }
   };
 
-  // Get appropriate navigation items based on user type
-  const getNavItems = () => {
+  // If loading, show a loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="h-8 w-8 animate-spin border-4 border-blue-500 border-t-transparent rounded-full"></div>
+        <span className="ml-2">Loading dashboard...</span>
+      </div>
+    );
+  }
+
+  // If there's an auth error, show login button
+  if (authError) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="bg-red-50 text-red-800 p-4 mb-4 rounded-md">
+          {authError}
+        </div>
+        <Link href="/login" className="bg-blue-600 text-white px-4 py-2 rounded">
+          Go to Login
+        </Link>
+      </div>
+    );
+  }
+
+  // Get appropriate nav items based on user type
+  const getNavItems = (userType: UserType | undefined) => {
+    // Common items for all user types
     const commonItems = [
-      { name: "Dashboard", href: "/dashboard" },
-      { name: "Navigation", href: "/navigation" },
+      { name: "Dashboard", href: `/dashboard/${userType}` },
+      { name: "Account", href: `/dashboard/${userType}/account` },
     ];
     
-    if (!user || !profile) return commonItems;
-    
-    const userType = profile?.user_type || user.user_metadata?.user_type;
-    
-    switch (userType) {
+    // User type specific items
+    switch(userType) {
       case "homeowner":
         return [
           ...commonItems,
           { name: "My Projects", href: "/dashboard/homeowner/projects" },
-          { name: "New Project", href: "/dashboard/homeowner/new-project" },
+          {
+            name: "New Project",
+            href: "/simple-bid",
+          },
         ];
       case "contractor":
         return [
@@ -181,116 +147,71 @@ export default function DashboardLayout({
           { name: "Available Jobs", href: "/dashboard/contractor/jobs" },
           { name: "My Bids", href: "/dashboard/contractor/bids" },
         ];
-      case "labor-contractor":
-        return [
-          ...commonItems,
-          { name: "Available Work", href: "/dashboard/labor-contractor/jobs" },
-          { name: "My Teams", href: "/dashboard/labor-contractor/teams" },
-        ];
-      case "property-manager":
-        return [
-          ...commonItems,
-          { name: "Properties", href: "/dashboard/property-manager/properties" },
-          { name: "Projects", href: "/dashboard/property-manager/projects" },
-        ];
       case "admin":
         return [
           ...commonItems,
           { name: "Users", href: "/dashboard/admin/users" },
           { name: "Projects", href: "/dashboard/admin/projects" },
-          { name: "Agent Integration", href: "/admin" },
         ];
       default:
         return commonItems;
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white p-8 rounded-md shadow-md w-full max-w-md">
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-          </div>
-          <p className="text-center mt-4 text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (authError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white p-8 rounded-md shadow-md w-full max-w-md">
-          <div className="text-center">
-            <h1 className="text-red-500 text-xl font-bold mb-4">Authentication Error</h1>
-            <p className="text-gray-600 mb-6">{authError}</p>
-            <Link 
-              href="/login" 
-              className="inline-block bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-md transition-colors duration-200"
-            >
-              Go to Login
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Get user type for navigation
+  const userType = profile?.user_type || 'homeowner';
+  const navItems = getNavItems(userType);
 
   return (
-    <div className="flex min-h-screen">
-      {/* Left sidebar */}
-      <div className="w-64 bg-gray-100 p-4 border-r">
-        <div className="mb-6">
-          <h1 className="text-xl font-bold">InstaBids</h1>
+    <div className="flex flex-col min-h-screen">
+      {/* Navigation Header */}
+      <header className="bg-white border-b">
+        <div className="container mx-auto px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center space-x-4">
+            <Link href="/" className="text-xl font-bold text-blue-600">
+              InstaBids
+            </Link>
+            <span className="text-sm text-gray-500">{userType}</span>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-sm mr-2">
+              {profile?.full_name || user?.email || 'User'}
+            </span>
+            <Button variant="outline" onClick={handleSignOut}>
+              Sign Out
+            </Button>
+          </div>
         </div>
+      </header>
+      
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar Navigation */}
+        <aside className="w-64 bg-gray-50 border-r overflow-y-auto">
+          <nav className="p-4">
+            <ul className="space-y-2">
+              {navItems.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`block px-4 py-2 rounded ${
+                      pathname === item.href
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {item.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </aside>
         
-        <div className="mb-4">
-          <p className="text-sm uppercase font-semibold text-gray-500 mb-2">NAVIGATION</p>
-          <ul className="space-y-1">
-            {getNavItems().map((item) => (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`block px-4 py-2 rounded-md ${
-                    pathname === item.href
-                      ? 'bg-blue-100 text-blue-700 font-medium'
-                      : 'hover:bg-gray-200'
-                  }`}
-                >
-                  {item.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-        
-        <div className="mt-auto">
-          <p className="text-sm uppercase font-semibold text-gray-500 mb-2">ACCOUNT</p>
-          <ul>
-            <li>
-              <Link
-                href="/dashboard/profile"
-                className="block px-4 py-2 rounded-md hover:bg-gray-200"
-              >
-                Profile Settings
-              </Link>
-            </li>
-            <li>
-              <button
-                className="w-full text-left px-4 py-2 rounded-md hover:bg-gray-200"
-                onClick={handleSignOut}
-              >
-                Sign Out
-              </button>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div className="flex-1 bg-white">
-        {children}
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto bg-gray-100">
+          {children}
+        </main>
       </div>
     </div>
   );
