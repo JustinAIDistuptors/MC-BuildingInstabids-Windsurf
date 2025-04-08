@@ -5,6 +5,7 @@
 
 import { supabase } from "../supabase/client";
 import type { UserType } from "./types";
+import { User } from '@supabase/supabase-js';
 
 /**
  * Sign up a new user
@@ -94,6 +95,8 @@ export async function signOutUser() {
 
 /**
  * Get the current authenticated user and their profile data
+ * 
+ * @returns Object containing user, profile, and error information
  */
 export async function getCurrentUser() {
   try {
@@ -165,6 +168,29 @@ export async function getCurrentUser() {
   } catch (err: any) {
     console.error("Error in getCurrentUser:", err);
     return { user: null, profile: null, error: err };
+  }
+}
+
+/**
+ * Get just the current user without profile data (simpler version)
+ * 
+ * @returns The user object if authenticated, or null if not authenticated
+ */
+export async function getCurrentUserOnly(): Promise<User | null> {
+  try {
+    // Get current session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      console.log("No active session found:", sessionError);
+      return null;
+    }
+    
+    // Return the user object directly
+    return session.user;
+  } catch (err: any) {
+    console.error("Error in getCurrentUserOnly:", err);
+    return null;
   }
 }
 
