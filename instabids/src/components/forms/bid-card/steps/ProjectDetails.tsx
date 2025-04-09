@@ -1,20 +1,16 @@
 'use client';
 
+import React from 'react';
 import { useFormContext } from 'react-hook-form';
-import { BidCardSchemaType } from '@/schemas/bidding.schema';
+import { BidCardFormSchemaType, FormStepProps } from '../BidCardForm';
 
 // UI Components
 import { FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
-type ProjectDetailsProps = {
-  mediaFiles: File[];
-  setMediaFiles: (files: File[]) => void;
-};
-
-export default function ProjectDetails({ mediaFiles, setMediaFiles }: ProjectDetailsProps) {
-  const { control, formState: { errors } } = useFormContext<BidCardSchemaType>();
+export default function ProjectDetails({ mediaFiles, setMediaFiles }: FormStepProps) {
+  const { control, formState: { errors } } = useFormContext<BidCardFormSchemaType>();
   
   return (
     <div className="space-y-8">

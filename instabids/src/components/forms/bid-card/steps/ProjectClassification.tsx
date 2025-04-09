@@ -1,237 +1,107 @@
 'use client';
 
+import React from 'react';
 import { useFormContext } from 'react-hook-form';
-import { BidCardSchemaType } from '@/schemas/bidding.schema';
-import { useState } from 'react';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
-// UI Components
-import { FormField, FormItem, FormControl, FormMessage } from '@/components/ui/form';
-import { Card } from '@/components/ui/card';
+// Explicit interface for component props following TypeScript Safety rule
+interface ProjectClassificationProps {
+  mediaFiles: File[];
+  setMediaFiles: React.Dispatch<React.SetStateAction<File[]>>;
+}
 
-// Project types with examples and images
+// Project type options - centralized and typed
 const PROJECT_TYPES = [
   {
     id: 'one-time',
-    label: 'Single Jobs',
-    description: 'One-time projects with a clear beginning and end',
-    examples: ['Roof Replacement', 'Kitchen Remodel', 'Deck Installation'],
-    image: '🏠',
-    color: 'bg-blue-100 text-blue-800 border-blue-200'
+    label: 'One Off Project',
+    icon: '🏗️',
+    description: 'Single-time projects like roof installation or driveway paving'
   },
   {
     id: 'continual',
-    label: 'Continual Services',
-    description: 'Ongoing maintenance and care for your property',
-    examples: ['Lawn Care', 'Pool Cleaning', 'House Cleaning'],
-    image: '🔄',
-    color: 'bg-green-100 text-green-800 border-green-200'
+    label: 'Continual Service',
+    icon: '🔄',
+    description: 'Recurring services like pool cleaning or lawn maintenance'
   },
   {
     id: 'repair',
-    label: 'Repair & Handyman',
-    description: 'Fix what needs fixing around your home',
-    examples: ['Plumbing Repairs', 'Roof Repair', 'Electrical Work'],
-    image: '🔧',
-    color: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    label: 'Repair',
+    icon: '🔧',
+    description: 'Fix something that\'s broken like window repair or appliance fixes'
+  },
+  {
+    id: 'handyman',
+    label: 'Handyman',
+    icon: '🧰',
+    description: 'Small mixed tasks and home improvements'
   },
   {
     id: 'labor',
     label: 'Labor Only',
-    description: 'You provide materials, we provide the work',
-    examples: ['Furniture Assembly', 'TV Mounting', 'Moving Help'],
-    image: '👷',
-    color: 'bg-purple-100 text-purple-800 border-purple-200'
+    icon: '👷',
+    description: 'Just need help with tasks like moving or assembly'
   },
   {
-    id: 'kitchen',
-    label: 'Kitchen Remodel',
-    description: 'Transform your kitchen into something special',
-    examples: ['Full Remodel', 'Cabinet Replacement', 'Countertop Update'],
-    image: '🍳',
-    color: 'bg-orange-100 text-orange-800 border-orange-200'
-  },
-  {
-    id: 'ai-gc',
-    label: 'AI GC',
-    description: 'AI-powered General Contractor services',
-    examples: ['Coming Soon'],
-    image: '🤖',
-    color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-    disabled: true
+    id: 'multi-step',
+    label: 'Multi-Step Project',
+    icon: '🏢',
+    description: 'Complex projects like bathroom remodels or additions'
   }
 ];
 
-// Job category data
-export const JOB_CATEGORIES = {
-  'one-time': [
-    // Most common 8 for visual bubbles
-    { id: 'roof-replacement', label: 'Roof Replacement', image: '🏠' },
-    { id: 'kitchen-remodel', label: 'Kitchen Remodeling', image: '🍳' },
-    { id: 'bathroom-reno', label: 'Bathroom Renovation', image: '🚿' },
-    { id: 'deck-patio', label: 'Deck/Patio Installation', image: '🏞️' },
-    { id: 'fence', label: 'Fence Installation', image: '🧱' },
-    { id: 'painting', label: 'Interior/Exterior Painting', image: '🎨' },
-    { id: 'flooring', label: 'Flooring Installation', image: '🪵' },
-    { id: 'windows', label: 'Window Replacement', image: '🪟' },
-    // Additional options for dropdown
-    { id: 'siding', label: 'Siding Installation' },
-    { id: 'basement', label: 'Basement Finishing' },
-    { id: 'attic', label: 'Attic Conversion' },
-    { id: 'addition', label: 'Home Addition' },
-    { id: 'pool', label: 'Swimming Pool Installation' },
-    { id: 'hvac', label: 'HVAC System Installation' },
-    { id: 'solar', label: 'Solar Panel Installation' },
-    { id: 'landscaping', label: 'Landscape Design/Installation' },
-    { id: 'concrete', label: 'Concrete Work' },
-    { id: 'driveway', label: 'Driveway Paving/Resurfacing' }
-  ],
-  'continual': [
-    // Most common 8 for visual bubbles
-    { id: 'lawn-care', label: 'Lawn Mowing/Maintenance', image: '🌱' },
-    { id: 'pool-cleaning', label: 'Pool Cleaning/Maintenance', image: '🏊' },
-    { id: 'house-cleaning', label: 'Housekeeping/Cleaning', image: '🧹' },
-    { id: 'pest-control', label: 'Pest Control', image: '🐜' },
-    { id: 'hvac-maintenance', label: 'HVAC Maintenance', image: '❄️' },
-    { id: 'gutter-cleaning', label: 'Gutter Cleaning', image: '🏡' },
-    { id: 'window-cleaning', label: 'Window Cleaning', image: '🪟' },
-    { id: 'snow-removal', label: 'Snow Removal', image: '❄️' },
-    // Additional options for dropdown
-    { id: 'landscape-maint', label: 'Landscape Maintenance' },
-    { id: 'pressure-washing', label: 'Pressure Washing' },
-    { id: 'chimney-sweep', label: 'Chimney Sweeping' },
-    { id: 'septic-maint', label: 'Septic Tank Maintenance' },
-    { id: 'carpet-cleaning', label: 'Carpet Cleaning' },
-    { id: 'security-monitor', label: 'Home Security Monitoring' },
-    { id: 'furnace-tuneup', label: 'Furnace/AC Tune-up' },
-    { id: 'dryer-vent', label: 'Dryer Vent Cleaning' }
-  ],
-  'repair': [
-    // Most common 8 for visual bubbles
-    { id: 'roof-repair', label: 'Roof Repair', image: '🏠' },
-    { id: 'plumbing-repair', label: 'Plumbing Repairs', image: '🚿' },
-    { id: 'electrical-repair', label: 'Electrical Repairs', image: '⚡' },
-    { id: 'hvac-repair', label: 'HVAC Repairs', image: '❄️' },
-    { id: 'appliance-repair', label: 'Appliance Repairs', image: '🔌' },
-    { id: 'drywall-repair', label: 'Drywall Repair', image: '🧱' },
-    { id: 'deck-repair', label: 'Deck/Fence Repair', image: '🏞️' },
-    { id: 'flooring-repair', label: 'Flooring Repair', image: '🪵' },
-    // Additional options for dropdown
-    { id: 'window-repair', label: 'Window Repair' },
-    { id: 'door-repair', label: 'Door Repair' },
-    { id: 'gutter-repair', label: 'Gutter Repair' },
-    { id: 'foundation-repair', label: 'Foundation Repair' },
-    { id: 'chimney-repair', label: 'Chimney Repair' },
-    { id: 'siding-repair', label: 'Siding Repair' },
-    { id: 'ceiling-repair', label: 'Ceiling Repair' },
-    { id: 'pool-repair', label: 'Pool Equipment Repairs' },
-    { id: 'toilet-repair', label: 'Toilet Repairs' },
-    { id: 'sink-repair', label: 'Sink/Faucet Repairs' }
-  ],
-  'labor': [
-    // Most common 8 for visual bubbles
-    { id: 'furniture-assembly', label: 'Furniture Assembly', image: '🪑' },
-    { id: 'tv-mounting', label: 'TV Mounting', image: '📺' },
-    { id: 'curtain-install', label: 'Curtain/Blind Installation', image: '🪟' },
-    { id: 'light-install', label: 'Light Fixture Installation', image: '💡' },
-    { id: 'moving', label: 'Moving Assistance', image: '📦' },
-    { id: 'shelving', label: 'Shelving Installation', image: '📚' },
-    { id: 'smart-home', label: 'Smart Home Device Installation', image: '🏠' },
-    { id: 'holiday-decor', label: 'Holiday Decoration Installation', image: '🎄' },
-    // Additional options for dropdown
-    { id: 'ceiling-fan', label: 'Ceiling Fan Installation' },
-    { id: 'art-hanging', label: 'Art/Picture Hanging' },
-    { id: 'closet-org', label: 'Closet Organization' },
-    { id: 'garage-org', label: 'Garage Organization' },
-    { id: 'shed-assembly', label: 'Shed Assembly' },
-    { id: 'grill-assembly', label: 'BBQ/Grill Assembly' },
-    { id: 'cabinet-install', label: 'Cabinet Installation' },
-    { id: 'doorbell-camera', label: 'Doorbell Camera Installation' },
-    { id: 'mirror-hanging', label: 'Mirror Hanging' }
-  ],
-  'kitchen': [
-    // Most common 8 for visual bubbles
-    { id: 'full-kitchen', label: 'Full Kitchen Remodel', image: '🍳' },
-    { id: 'cabinets', label: 'Cabinet Replacement', image: '🪑' },
-    { id: 'countertops', label: 'Countertop Installation', image: '🧱' },
-    { id: 'backsplash', label: 'Backsplash Installation', image: '🧩' },
-    { id: 'kitchen-island', label: 'Kitchen Island Addition', image: '🏝️' },
-    { id: 'appliance-install', label: 'Appliance Installation', image: '🍽️' },
-    { id: 'kitchen-flooring', label: 'Kitchen Flooring', image: '🪵' },
-    { id: 'kitchen-lighting', label: 'Kitchen Lighting', image: '💡' },
-    // Additional options for dropdown
-    { id: 'sink-faucet', label: 'Sink & Faucet Replacement' },
-    { id: 'pantry', label: 'Pantry Organization/Installation' },
-    { id: 'open-concept', label: 'Open Concept Conversion' },
-    { id: 'kitchen-paint', label: 'Kitchen Painting' }
-  ]
-};
-
-type ProjectClassificationProps = {
-  mediaFiles: File[];
-  setMediaFiles: (files: File[]) => void;
-};
-
 export default function ProjectClassification({ mediaFiles, setMediaFiles }: ProjectClassificationProps) {
-  const { control, watch } = useFormContext<BidCardSchemaType>();
-  const [selectedType, setSelectedType] = useState<string | null>(null);
+  const { register, setValue, watch } = useFormContext();
+  const selectedType = watch('job_type_id');
+  
+  // Handler to properly set the form value
+  const handleTypeSelect = (value: string) => {
+    setValue('job_type_id', value, { shouldValidate: true });
+  };
   
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold mb-4">What type of project do you need?</h2>
-        <p className="text-gray-600 mb-6">
-          Select the option that best describes your project, and we'll help you get started.
+        <h2 className="text-xl font-semibold mb-4">What type of project is this?</h2>
+        <p className="text-gray-600 mb-6">Select the category that best describes your project.</p>
+      </div>
+      
+      {/* RadioGroup parent component is REQUIRED for RadioGroupItem to work */}
+      <RadioGroup value={selectedType || ''} onValueChange={handleTypeSelect}>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Map through project types to generate options consistently */}
+          {PROJECT_TYPES.map((type) => (
+            <div 
+              key={type.id}
+              className={`p-4 border-2 rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                selectedType === type.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              }`}
+              onClick={() => handleTypeSelect(type.id)}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <RadioGroupItem value={type.id} id={type.id} />
+                <Label htmlFor={type.id} className="text-lg font-medium cursor-pointer">
+                  {type.label} {type.icon}
+                </Label>
+              </div>
+              <p className="text-gray-600 ml-6">{type.description}</p>
+            </div>
+          ))}
+        </div>
+      </RadioGroup>
+      
+      {/* AIGC Coming Soon Banner */}
+      <div className="mt-8 p-4 bg-gray-100 border border-dashed border-gray-300 rounded-lg text-center">
+        <p className="text-gray-600">
+          <span className="inline-block px-2 py-1 bg-blue-100 text-blue-800 text-xs font-semibold rounded mb-2">COMING SOON</span>
+          <br />
+          AI-Generated Project Categories - Let AI help determine your project type
         </p>
       </div>
-
-      {/* Project Type Selection */}
-      <FormField
-        control={control}
-        name="job_type_id"
-        render={({ field }) => (
-          <FormItem className="space-y-3">
-            <FormControl>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {PROJECT_TYPES.map((type) => (
-                  <Card 
-                    key={type.id} 
-                    className={`p-0 cursor-pointer transition-all border-2 overflow-hidden ${
-                      type.disabled ? 'opacity-70 cursor-not-allowed' : 
-                      field.value === type.id ? 'ring-2 ring-blue-600 border-blue-300' : 'hover:shadow-md border-gray-200'
-                    }`}
-                    onClick={() => {
-                      if (!type.disabled) {
-                        field.onChange(type.id);
-                        setSelectedType(type.id);
-                      }
-                    }}
-                  >
-                    <div className={`p-3 ${type.color}`}>
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-semibold text-lg">{type.label}</h3>
-                        <span className="text-2xl">{type.image}</span>
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <p className="text-gray-600 text-sm mb-3">{type.description}</p>
-                      <div className="text-xs text-gray-500">
-                        {type.disabled ? (
-                          <span className="font-medium">Coming Soon</span>
-                        ) : (
-                          <>
-                            <span className="font-medium">Examples:</span> {type.examples.join(', ')}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      
+      {/* Hidden input for form handling */}
+      <input type="hidden" {...register('job_type_id')} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
+import React, { useState } from 'react';
 import { useFormContext } from 'react-hook-form';
-import { BidCardSchemaType } from '@/schemas/bidding.schema';
+import { BidCardFormSchemaType, FormStepProps } from '../BidCardForm';
 
 // UI Components
 import { FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/components/ui/form';
@@ -10,12 +11,10 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { CalendarIcon } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { format, addDays } from 'date-fns';
-import { useState } from 'react';
 
 // Sample timeline options - replace with API data in production
 const TIMELINE_HORIZONS = [
@@ -47,13 +46,8 @@ const US_STATES = [
   { value: 'MI', label: 'Michigan' },
 ];
 
-type LocationTimelineProps = {
-  mediaFiles: File[];
-  setMediaFiles: (files: File[]) => void;
-};
-
-export default function LocationTimeline({ mediaFiles, setMediaFiles }: LocationTimelineProps) {
-  const { control, watch, setValue } = useFormContext<BidCardSchemaType>();
+export default function LocationTimeline({ mediaFiles, setMediaFiles }: FormStepProps) {
+  const { control, watch, setValue } = useFormContext<BidCardFormSchemaType>();
   
   // Watch values to conditionally render fields
   const timelineHorizon = watch('timeline_horizon_id');
@@ -62,7 +56,11 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
   // Handle ZIP code change to auto-fill location.zip_code
   const handleZipChange = (value: string) => {
     setValue('zip_code', value);
-    setValue('location.zip_code', value);
+    if (value) {
+      // Ensure location object exists
+      const currentLocation = watch('location') || {};
+      setValue('location', { ...currentLocation, zip_code: value });
+    }
   };
   
   return (
@@ -199,24 +197,9 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
                   className="space-y-3"
                 >
                   {TIMELINE_HORIZONS.map((timeline) => (
-                    <div 
-                      key={timeline.id} 
-                      className={`border rounded-md p-3 cursor-pointer transition-all ${
-                        field.value === timeline.id ? 'border-blue-600 bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => field.onChange(timeline.id)}
-                    >
-                      <RadioGroupItem 
-                        value={timeline.id} 
-                        id={`timeline-${timeline.id}`} 
-                        className="sr-only" 
-                      />
-                      <Label 
-                        htmlFor={`timeline-${timeline.id}`}
-                        className="cursor-pointer block"
-                      >
-                        {timeline.label}
-                      </Label>
+                    <div key={timeline.id} className="flex items-center space-x-2">
+                      <RadioGroupItem value={timeline.id} id={`timeline-${timeline.id}`} />
+                      <Label htmlFor={`timeline-${timeline.id}`}>{timeline.label}</Label>
                     </div>
                   ))}
                 </RadioGroup>
@@ -226,29 +209,27 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
           )}
         />
         
-        {/* Custom Timeline (conditional) */}
+        {/* Custom Timeline (conditionally rendered) */}
         {timelineHorizon === 'custom' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Timeline Start */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-lg">
             <FormField
               control={control}
               name="timeline_start"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Project Start Date</FormLabel>
+                  <FormLabel>Earliest Start Date</FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
-                          variant="outline"
+                          variant={"outline"}
                           className={`w-full pl-3 text-left font-normal ${!field.value ? "text-muted-foreground" : ""}`}
                         >
                           {field.value ? (
                             format(new Date(field.value), "PPP")
                           ) : (
-                            <span>Pick a date</span>
+                            <span>Select date</span>
                           )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
@@ -256,7 +237,7 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
                       <Calendar
                         mode="single"
                         selected={field.value ? new Date(field.value) : undefined}
-                        onSelect={(date) => field.onChange(date ? date.toISOString() : undefined)}
+                        onSelect={(date) => field.onChange(date ? date.toISOString() : '')}
                         disabled={(date) => date < new Date()}
                         initialFocus
                       />
@@ -267,26 +248,24 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
               )}
             />
             
-            {/* Timeline End */}
             <FormField
               control={control}
               name="timeline_end"
               render={({ field }) => (
                 <FormItem className="flex flex-col">
-                  <FormLabel>Project End Date (Estimated)</FormLabel>
+                  <FormLabel>Latest End Date (Optional)</FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
-                          variant="outline"
+                          variant={"outline"}
                           className={`w-full pl-3 text-left font-normal ${!field.value ? "text-muted-foreground" : ""}`}
                         >
                           {field.value ? (
                             format(new Date(field.value), "PPP")
                           ) : (
-                            <span>Pick a date</span>
+                            <span>Select date</span>
                           )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
@@ -294,10 +273,10 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
                       <Calendar
                         mode="single"
                         selected={field.value ? new Date(field.value) : undefined}
-                        onSelect={(date) => field.onChange(date ? date.toISOString() : undefined)}
+                        onSelect={(date) => field.onChange(date ? date.toISOString() : '')}
                         disabled={(date) => {
-                          const start = watch('timeline_start');
-                          return date < (start ? new Date(start) : new Date());
+                          const startDate = watch('timeline_start');
+                          return startDate ? date < new Date(startDate) : date < new Date();
                         }}
                         initialFocus
                       />
@@ -315,24 +294,23 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
           control={control}
           name="bid_deadline"
           render={({ field }) => (
-            <FormItem className="flex flex-col">
-              <FormLabel>Bid Deadline (Optional)</FormLabel>
+            <FormItem>
+              <FormLabel className="text-base">When should contractors submit their bids by?</FormLabel>
               <FormDescription>
-                Set a deadline for when contractors can submit bids
+                Setting a deadline helps contractors know when they need to respond
               </FormDescription>
               <Popover>
                 <PopoverTrigger asChild>
                   <FormControl>
                     <Button
-                      variant="outline"
+                      variant={"outline"}
                       className={`w-full md:w-[240px] pl-3 text-left font-normal ${!field.value ? "text-muted-foreground" : ""}`}
                     >
                       {field.value ? (
                         format(new Date(field.value), "PPP")
                       ) : (
-                        <span>Set a deadline</span>
+                        <span>Select deadline</span>
                       )}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
@@ -340,7 +318,7 @@ export default function LocationTimeline({ mediaFiles, setMediaFiles }: Location
                   <Calendar
                     mode="single"
                     selected={field.value ? new Date(field.value) : undefined}
-                    onSelect={(date) => field.onChange(date ? date.toISOString() : undefined)}
+                    onSelect={(date) => field.onChange(date ? date.toISOString() : '')}
                     disabled={(date) => date < new Date()}
                     initialFocus
                   />
