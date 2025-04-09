@@ -1,46 +1,46 @@
 'use client';
 
+import React from 'react';
+import { Toaster } from '@/components/ui/toaster';
 import { BidCardForm } from '@/components/forms/bid-card';
-import { BidCardSchemaType } from '@/lib/validations/bid-card';
 
-export default function NewProjectPage() {
-  // Handle form submission
-  const handleSubmit = async (data: BidCardSchemaType, mediaFiles: File[]) => {
-    // In a real implementation, this would send the data to the server
+// Import components with proper types
+import type { BidCardFormSchemaType } from '@/components/forms/bid-card/BidCardForm';
+
+export default function ProjectsNewPage() {
+  const handleSubmit = async (data: BidCardFormSchemaType, mediaFiles: File[]) => {
     console.log('Form submitted:', data);
     console.log('Media files:', mediaFiles);
     
-    // Simulate API call delay
+    // Simulate API request
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     return Promise.resolve();
   };
   
-  // Handle saving draft
-  const handleSaveDraft = async (data: BidCardSchemaType, mediaFiles: File[]) => {
-    // In a real implementation, this would save the draft to the server
+  const handleSaveDraft = async (data: BidCardFormSchemaType, mediaFiles: File[]) => {
     console.log('Draft saved:', data);
     console.log('Media files:', mediaFiles);
     
-    // Simulate API call delay
+    // Simulate API request
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     return Promise.resolve();
   };
   
   return (
-    <div className="container mx-auto py-10 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Create New Project</h1>
-        <p className="text-muted-foreground">
-          Fill out the form below to create a new project and receive bids from contractors.
-        </p>
-      </div>
+    <div className="container mx-auto py-6 max-w-4xl">
+      <h1 className="text-2xl font-bold mb-6">Create New Project</h1>
+      <p className="text-gray-600 mb-8">
+        Fill out the form below to create a new project bid card. This will help contractors understand your project and provide accurate bids.
+      </p>
       
       <BidCardForm 
         onSubmit={handleSubmit}
         onSaveDraft={handleSaveDraft}
       />
+      
+      <Toaster />
     </div>
   );
 }
