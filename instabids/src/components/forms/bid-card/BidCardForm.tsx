@@ -285,24 +285,28 @@ export default function BidCardForm() {
           </div>
           
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-6">
-            <div>
-              {step > 0 && (
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={handlePreviousStep}
-                >
-                  Previous
-                </Button>
-              )}
-            </div>
-            
-            <div className="flex gap-3">
+          <div className="flex justify-between pt-6">
+            {step > 0 && (
               <Button 
                 type="button" 
-                variant="outline" 
+                onClick={handlePreviousStep}
+                variant="outline"
+                className="min-w-[100px]"
+              >
+                Back
+              </Button>
+            )}
+            
+            {step === 0 && (
+              <div /> {/* Empty div for flex spacing when back button is not shown */}
+            )}
+            
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
                 onClick={handleSaveDraft}
+                variant="outline"
+                className="border-2 border-gray-300"
               >
                 Save as Draft
               </Button>
@@ -311,13 +315,16 @@ export default function BidCardForm() {
                 <Button 
                   type="button" 
                   onClick={handleNextStep}
+                  className="min-w-[100px] font-medium px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white shadow-md border-0"
+                  data-component-name="_c"
                 >
                   Next
                 </Button>
               ) : (
                 <Button 
-                  type="submit" 
+                  type="submit"
                   disabled={isSubmitting}
+                  className="min-w-[120px] font-medium px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white shadow-md border-0"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Project'}
                 </Button>

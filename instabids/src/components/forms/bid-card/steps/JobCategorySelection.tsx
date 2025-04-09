@@ -88,12 +88,12 @@ export default function JobCategorySelection({ mediaFiles, setMediaFiles }: JobC
                     setOtherCategorySelected(true);
                   }}
                 >
-                  <SelectTrigger className="w-full md:w-[300px]">
+                  <SelectTrigger className="w-full md:w-[300px] border-2 border-gray-300 bg-white shadow-sm">
                     <SelectValue placeholder="Select another job category" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white border-2 border-gray-300 shadow-md max-h-[300px] overflow-y-auto">
                     {dropdownCategories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
+                      <SelectItem key={category.id} value={category.id} className="py-2 hover:bg-blue-50">
                         {category.label}
                       </SelectItem>
                     ))}
