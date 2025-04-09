@@ -184,6 +184,26 @@ export const PROJECT_TYPES = {
 
 export type ProjectType = keyof typeof PROJECT_TYPES;
 
+// Job size constants for UI reference
+export const JOB_SIZES: Record<string, { label: string, description: string }> = {
+  [JobSize.Small]: { 
+    label: 'Small', 
+    description: 'Quick work, typically under $2,000' 
+  },
+  [JobSize.Medium]: { 
+    label: 'Medium', 
+    description: 'Standard project, $2,000-$10,000' 
+  },
+  [JobSize.Large]: { 
+    label: 'Large', 
+    description: 'Major project, $10,000-$50,000' 
+  },
+  [JobSize.ExtraLarge]: { 
+    label: 'Extra Large', 
+    description: 'Extensive project, $50,000+' 
+  },
+};
+
 // Mock data for UI development and testing
 export const MOCK_JOB_CATEGORIES: JobCategory[] = [
   {

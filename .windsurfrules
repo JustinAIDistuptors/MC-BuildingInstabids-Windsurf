@@ -1,0 +1,5 @@
+Always perform a complete analysis of existing patterns before implementing new components
+Test integration points early rather than building all components first and then integrating
+Stick to the exact patterns defined in your system prompts
+Use the exact code snippets provided in your system prompts
+Do not modify the code snippets provided in your system prompts

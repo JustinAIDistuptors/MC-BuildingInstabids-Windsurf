@@ -190,7 +190,7 @@ export default function ProjectsPage() {
             {activeTab === 'drafts' && "You don't have any draft projects yet."}
             {activeTab === 'completed' && "You don't have any completed projects yet."}
           </p>
-          <Link href="/simple-bid">
+          <Link href="/dashboard/homeowner/new-project">
             <Button>Create New Project</Button>
           </Link>
         </div>
@@ -240,7 +240,7 @@ export default function ProjectsPage() {
                 {/* Action Buttons */}
                 <div className="flex justify-between">
                   <Link 
-                    href={`/simple-bid/submit?id=${project.id}`}
+                    href={`/dashboard/homeowner/projects/${project.id}`}
                     className="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-600 rounded-lg hover:bg-blue-700"
                   >
                     View Details
@@ -248,7 +248,7 @@ export default function ProjectsPage() {
                   
                   <div className="flex gap-2">
                     <Link 
-                      href={`/simple-bid?edit=${project.id}`}
+                      href={`/dashboard/homeowner/new-project?edit=${project.id}`}
                       className="px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
                     >
                       Edit

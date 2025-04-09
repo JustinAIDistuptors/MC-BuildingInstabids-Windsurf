@@ -138,7 +138,7 @@ export default function DashboardLayout({
           { name: "My Projects", href: "/dashboard/homeowner/projects" },
           {
             name: "New Project",
-            href: "/simple-bid",
+            href: "/dashboard/homeowner/new-project",
           },
         ];
       case "contractor":
