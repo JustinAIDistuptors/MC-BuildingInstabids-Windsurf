@@ -118,7 +118,7 @@ const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: 
           </div>
           <div>
             <span className="text-gray-500">Location</span>
-            <p className="font-medium">{project.location}</p>
+            <p className="font-medium">{formatLocation(project.location)}</p>
           </div>
           <div>
             <span className="text-gray-500">Size</span>
@@ -156,11 +156,32 @@ const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: 
   );
 };
 
+// Format location for display
+const formatLocation = (location: any): string => {
+  if (!location) return 'Not specified';
+  
+  if (typeof location === 'object') {
+    const city = location.city || '';
+    const state = location.state || '';
+    const zip = location.zip_code || '';
+    
+    if (!city && !state && !zip) return 'Not specified';
+    
+    return [
+      city,
+      state ? (city ? `, ${state}` : state) : '',
+      zip ? ` ${zip}` : ''
+    ].join('');
+  }
+  
+  return location;
+};
+
 // Empty state component
 const EmptyState = ({ onCreateProject }: { onCreateProject: () => void }) => (
   <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
     <div className="mb-4">
-      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
     </div>
@@ -350,14 +371,38 @@ export default function ProjectsPage() {
 
   // Handle viewing a project
   const handleViewProject = (project: any) => {
-    // If this is the last submitted project with media, show the bid card view
-    if (project.hasMedia) {
-      // Navigate to the bid card form with a query parameter to show the view
+    try {
+      // Safely prepare project data for localStorage
+      const safeProject = {
+        data: {
+          title: project.title || 'Untitled Project',
+          description: project.description || 'No description provided',
+          job_type_id: project.job_type_id || project.type || 'one-time',
+          job_size: project.job_size || project.size || 'medium',
+          group_bidding_enabled: project.group_bidding_enabled || false,
+          // Ensure location is a string for storage
+          location: typeof project.location === 'string' 
+            ? project.location 
+            : {
+                city: project.location?.city || '',
+                state: project.location?.state || '',
+                zip_code: project.location?.zip_code || project.zip_code || ''
+              }
+        },
+        submittedAt: project.created_at || new Date().toISOString()
+      };
+      
+      // Store in localStorage for the bid-card page to access
+      localStorage.setItem('lastSubmittedProject', JSON.stringify(safeProject));
+      
+      // Navigate to the bid-card page with view=true parameter
       router.push('/bid-card?view=true');
-    } else {
+    } catch (error) {
+      console.error('Error preparing project data:', error);
       toast({
-        title: 'Project Details',
-        description: 'Viewing project details is not implemented for sample projects.',
+        title: 'Error',
+        description: 'Could not view project details. Please try again.',
+        variant: 'destructive',
       });
     }
   };
