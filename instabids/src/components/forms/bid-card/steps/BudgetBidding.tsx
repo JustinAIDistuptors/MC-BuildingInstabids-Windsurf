@@ -1,313 +1,157 @@
 'use client';
 
-import { useFormContext } from 'react-hook-form';
-import { BidCardSchemaType, validateBudgetRange } from '@/schemas/bidding.schema';
-import { useState, useEffect } from 'react';
-
-// UI Components
 import { FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Slider } from '@/components/ui/slider';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Card } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Control } from 'react-hook-form';
+import { useState } from 'react';
 
-// Visibility options
-const VISIBILITY_OPTIONS = [
-  { 
-    value: 'public', 
-    label: 'Public', 
-    description: 'Any qualified contractor can see your project and submit a bid' 
-  },
-  { 
-    value: 'private', 
-    label: 'Private', 
-    description: 'Only invited contractors can see your project and submit bids' 
-  },
-  { 
-    value: 'group', 
-    label: 'Specific Groups', 
-    description: 'Only contractors in selected groups can see and bid on your project' 
-  },
+// Simple job size options
+const PROJECT_SIZE_OPTIONS = [
+  { value: 'small', label: 'Small Project', description: 'Quick jobs that take a few hours to complete' },
+  { value: 'medium', label: 'Medium Project', description: 'Projects that take a few days to complete' },
+  { value: 'large', label: 'Large Project', description: 'Projects that take weeks to complete' },
+  { value: 'extra_large', label: 'Extra Large Project', description: 'Major renovations that take months to complete' }
 ];
 
 type BudgetBiddingProps = {
-  mediaFiles: File[];
-  setMediaFiles: (files: File[]) => void;
+  control: Control<any>;
 };
 
-export default function BudgetBidding({ mediaFiles, setMediaFiles }: BudgetBiddingProps) {
-  const { control, watch, setValue, formState: { errors }, trigger } = useFormContext<BidCardSchemaType>();
-  
-  // Watch values to handle custom validation
-  const budgetMin = watch('budget_min');
-  const budgetMax = watch('budget_max');
-  const groupBidding = watch('group_bidding_enabled');
-  const visibility = watch('visibility');
-  
-  // Initialize slider value with budget range or defaults
-  const [sliderValues, setSliderValues] = useState<number[]>([
-    budgetMin || 1000, 
-    budgetMax || 10000
-  ]);
-  
-  // Custom budget range validation
-  useEffect(() => {
-    const validateBudget = async () => {
-      if (budgetMin && budgetMax) {
-        const customErrors = validateBudgetRange({ budget_min: budgetMin, budget_max: budgetMax });
-        
-        if (Object.keys(customErrors).length > 0) {
-          // We have validation errors - handle them
-          for (const [field, error] of Object.entries(customErrors)) {
-            // We need to manually set error state here
-            // In a real app, you might integrate this with react-hook-form setError
-            console.error(`${field}: ${error}`);
-          }
-        } else {
-          // Revalidate fields to clear errors
-          await trigger(['budget_min', 'budget_max']);
-        }
-      }
-    };
-    
-    validateBudget();
-  }, [budgetMin, budgetMax, trigger]);
-  
-  // Update form values when slider changes
-  const handleSliderChange = (values: number[]) => {
-    setSliderValues(values);
-    setValue('budget_min', values[0]);
-    setValue('budget_max', values[1]);
-    trigger(['budget_min', 'budget_max']);
-  };
-  
-  // Update slider when inputs change
-  const handleInputChange = (field: 'budget_min' | 'budget_max', value: number) => {
-    setValue(field, value);
-    
-    if (field === 'budget_min') {
-      setSliderValues([value, sliderValues[1]]);
-    } else {
-      setSliderValues([sliderValues[0], value]);
-    }
-    
-    trigger(['budget_min', 'budget_max']);
-  };
-  
+export default function BudgetBidding({ control }: BudgetBiddingProps) {
+  // Local state to ensure immediate UI feedback
+  const [selectedSize, setSelectedSize] = useState<string>('medium');
+
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-semibold mb-4">Budget & Bidding Preferences</h2>
+        <h2 className="text-xl font-semibold mb-4">Project Size & Group Bidding</h2>
         <p className="text-gray-600 mb-6">
-          Set your budget range and preferences for how contractors can bid on your project.
+          Help contractors understand your project scope and explore group bidding options.
         </p>
       </div>
 
-      {/* Budget Section */}
+      {/* Project Size Section */}
       <div className="space-y-6">
-        <h3 className="text-lg font-medium">Project Budget</h3>
-        
-        {/* Budget Range Slider */}
-        <div className="pt-6 pb-2">
-          <FormItem>
-            <FormLabel className="text-base">Budget Range</FormLabel>
-            <FormDescription>
-              Move the sliders to set your minimum and maximum budget for this project.
-            </FormDescription>
-            <div className="pt-4">
-              <Slider
-                defaultValue={sliderValues}
-                min={500}
-                max={100000}
-                step={500}
-                value={sliderValues}
-                onValueChange={handleSliderChange}
-                className="mb-6"
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">$500</span>
-              <span className="text-sm font-medium">${sliderValues[0]} - ${sliderValues[1]}</span>
-              <span className="text-sm text-gray-500">$100,000+</span>
-            </div>
-          </FormItem>
-        </div>
-        
-        {/* Min and Max Budget Inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={control}
-            name="budget_min"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Minimum Budget ($)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={500}
-                    value={field.value || ''}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      field.onChange(value);
-                      handleInputChange('budget_min', value);
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={control}
-            name="budget_max"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Maximum Budget ($)</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    min={500}
-                    value={field.value || ''}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      field.onChange(value);
-                      handleInputChange('budget_max', value);
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-      </div>
-      
-      <Separator />
-      
-      {/* Bidding Preferences Section */}
-      <div className="space-y-6">
-        <h3 className="text-lg font-medium">Bidding Preferences</h3>
-        
-        {/* Project Visibility */}
+        <h3 className="text-lg font-medium">Project Size</h3>
         <FormField
           control={control}
-          name="visibility"
+          name="job_size"
           render={({ field }) => (
             <FormItem className="space-y-4">
-              <FormLabel className="text-base">Project Visibility</FormLabel>
-              <FormDescription>
-                Control who can see and bid on your project
-              </FormDescription>
               <FormControl>
-                <RadioGroup
-                  onValueChange={(value) => field.onChange(value)}
-                  value={field.value}
-                  className="space-y-3"
-                >
-                  {VISIBILITY_OPTIONS.map((option) => (
-                    <Card 
-                      key={option.value} 
-                      className={`p-4 cursor-pointer transition-all ${
-                        field.value === option.value ? 'ring-2 ring-blue-600 bg-blue-50' : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => field.onChange(option.value)}
-                    >
-                      <div className="flex items-start">
-                        <RadioGroupItem 
-                          value={option.value} 
-                          id={`visibility-${option.value}`} 
-                          className="sr-only" 
-                        />
-                        <div>
-                          <Label 
-                            htmlFor={`visibility-${option.value}`}
-                            className="text-base font-medium cursor-pointer block mb-1"
-                          >
-                            {option.label}
-                          </Label>
-                          <p className="text-sm text-gray-500">{option.description}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {PROJECT_SIZE_OPTIONS.map((option) => {
+                    const isSelected = field.value === option.value || selectedSize === option.value;
+                    
+                    return (
+                      <div 
+                        key={option.value}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          field.onChange(option.value);
+                          setSelectedSize(option.value);
+                        }}
+                        className={`p-4 cursor-pointer transition-all h-full rounded-lg border-2 ${
+                          isSelected 
+                            ? 'border-blue-500 bg-blue-50 shadow-md' 
+                            : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <div className="flex items-center h-5 mt-1">
+                            <input
+                              type="radio"
+                              id={`size-${option.value}`}
+                              name="job_size"
+                              value={option.value}
+                              checked={isSelected}
+                              onChange={() => {
+                                field.onChange(option.value);
+                                setSelectedSize(option.value);
+                              }}
+                              className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label 
+                              htmlFor={`size-${option.value}`}
+                              className="text-base font-medium cursor-pointer block mb-1"
+                            >
+                              {option.label}
+                            </label>
+                            <p className="text-sm text-gray-500">{option.description}</p>
+                          </div>
                         </div>
                       </div>
-                    </Card>
-                  ))}
-                </RadioGroup>
+                    );
+                  })}
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
+      </div>
+      
+      {/* Group Bidding Section */}
+      <div className="space-y-6 mt-8">
+        <h3 className="text-lg font-medium">Group Bidding</h3>
         
-        {/* Group Bidding */}
+        {/* Group Bidding Toggle with Enhanced UI */}
         <FormField
           control={control}
           name="group_bidding_enabled"
           render={({ field }) => (
-            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <FormLabel className="text-base">Allow Group Bidding</FormLabel>
-                <FormDescription>
-                  Enable contractors to form groups and submit joint bids
-                </FormDescription>
+            <FormItem className="rounded-lg border p-6 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <div className="flex flex-col space-y-4">
+                <div className="flex flex-row items-center justify-between">
+                  <div>
+                    <FormLabel className="text-lg font-semibold text-blue-800">Enable Group Bidding</FormLabel>
+                    <FormDescription className="text-blue-700">
+                      Get better rates when multiple neighbors join together
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value !== undefined ? field.value : false}
+                      onCheckedChange={field.onChange}
+                      className="data-[state=checked]:bg-blue-600"
+                    />
+                  </FormControl>
+                </div>
+                
+                <div className="bg-white rounded-lg border border-blue-200 p-5 mt-3">
+                  <div className="flex">
+                    <div className="ml-4">
+                      <h4 className="text-base font-medium text-blue-800">How Group Bidding Works</h4>
+                      <ul className="mt-2 space-y-3 text-sm text-gray-700">
+                        <li>
+                          <span><strong>Save 15-30%</strong> when multiple neighbors join your project</span>
+                        </li>
+                        <li>
+                          <span>Perfect for <strong>lawn care, snow removal, painting, and more</strong></span>
+                        </li>
+                        <li>
+                          <span>Contractors save on travel time and can purchase materials in bulk</span>
+                        </li>
+                        <li>
+                          <span>We'll notify neighbors in your area who might be interested</span>
+                        </li>
+                      </ul>
+                      
+                      <div className="mt-4 p-3 bg-blue-50 rounded-md border border-blue-100">
+                        <p className="text-sm text-blue-800">
+                          <strong>Example:</strong> A lawn service could offer a 20% discount if 3-5 houses on the same street sign up together, saving everyone money while the contractor still benefits from efficiency.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <FormControl>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        
-        {/* Prohibit Negotiation (Optional) */}
-        <FormField
-          control={control}
-          name="prohibit_negotiation"
-          render={({ field }) => (
-            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <FormLabel className="text-base">Prohibit Negotiation</FormLabel>
-                <FormDescription>
-                  Only accept bids at your exact specified budget, no negotiations
-                </FormDescription>
-              </div>
-              <FormControl>
-                <Switch
-                  checked={field.value || false}
-                  onCheckedChange={field.onChange}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-        
-        {/* Max Contractor Messages (Optional) */}
-        <FormField
-          control={control}
-          name="max_contractor_messages"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Maximum Contractor Messages (Optional)</FormLabel>
-              <FormDescription>
-                Limit the number of messages contractors can send before bidding
-              </FormDescription>
-              <FormControl>
-                <Input
-                  type="number"
-                  min={0}
-                  max={20}
-                  value={field.value || ''}
-                  onChange={(e) => field.onChange(parseInt(e.target.value) || undefined)}
-                  placeholder="No limit"
-                  className="max-w-[200px]"
-                />
-              </FormControl>
-              <FormMessage />
             </FormItem>
           )}
         />

@@ -1,225 +1,173 @@
 'use client';
 
-import { useFormContext } from 'react-hook-form';
-import { BidCardSchemaType } from '@/schemas/bidding.schema';
-import { useState, useCallback } from 'react';
-
-// UI Components
-import { FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage } from '@/components/ui/form';
+import { useState } from 'react';
+import { FormField, FormItem, FormLabel, FormDescription } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/components/ui/use-toast';
-
-const FILE_TYPES = ["JPG", "PNG", "PDF", "DOCX", "XLS", "XLSX"];
-const MAX_FILE_SIZE = 10; // 10MB
+import { Card } from '@/components/ui/card';
+import { Control } from 'react-hook-form';
 
 type MediaUploadProps = {
   mediaFiles: File[];
-  setMediaFiles: (files: File[]) => void;
+  setMediaFiles: React.Dispatch<React.SetStateAction<File[]>>;
+  control: Control<any>;
+  register?: any;
+  errors?: any;
 };
 
 export default function MediaUpload({ mediaFiles, setMediaFiles }: MediaUploadProps) {
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const { control, formState: { errors } } = useFormContext<BidCardSchemaType>();
-  
-  // Create file previews for display
-  const [filePreviews, setFilePreviews] = useState<Array<{
-    file: File;
-    preview: string;
-    type: string;
-    description: string;
-  }>>([]);
-  
-  // Handle file change from uploader
-  const handleFileChange = (files: FileList | null) => {
-    if (!files) return;
+  const [dragActive, setDragActive] = useState(false);
+
+  // Handle file input change
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     
-    // Convert FileList to array
-    const fileArray = Array.from(files);
-    
-    // Check file size
-    const oversizedFile = fileArray.find(file => file.size > MAX_FILE_SIZE * 1024 * 1024);
-    if (oversizedFile) {
-      setUploadError(`File ${oversizedFile.name} exceeds the ${MAX_FILE_SIZE}MB limit`);
-      toast({
-        title: "File too large",
-        description: `File ${oversizedFile.name} exceeds the ${MAX_FILE_SIZE}MB limit`,
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setUploadError(null);
-    
-    // Create preview URLs for each file
-    const newFilePreviews = fileArray.map(file => {
-      const fileType = file.type.split('/')[0];
-      let preview = '';
-      
-      // Create preview URLs for images
-      if (fileType === 'image') {
-        preview = URL.createObjectURL(file);
-      }
-      
-      return {
-        file,
-        preview,
-        type: fileType || 'unknown',
-        description: '',
-      };
-    });
-    
-    // Update state with proper typing
-    setFilePreviews((prevFiles) => [...prevFiles, ...newFilePreviews]);
-    // Using the correct setter pattern
-    setMediaFiles([...mediaFiles, ...fileArray]);
-  };
-  
-  // Handle removing a file
-  const handleRemoveFile = (index: number) => {
-    // Create new arrays without the removed file
-    const newFilePreviews = [...filePreviews];
-    if (index >= 0 && index < newFilePreviews.length) {
-      newFilePreviews.splice(index, 1);
-      setFilePreviews(newFilePreviews);
-      
-      const newMediaFiles = [...mediaFiles];
-      newMediaFiles.splice(index, 1);
-      setMediaFiles(newMediaFiles);
+    if (e.target.files && e.target.files.length > 0) {
+      const newFiles = Array.from(e.target.files);
+      setMediaFiles([...mediaFiles, ...newFiles]);
     }
   };
-  
-  // Update file description
-  const handleUpdateDescription = (index: number, description: string) => {
-    if (index >= 0 && index < filePreviews.length) {
-      const newFilePreviews = [...filePreviews];
-      newFilePreviews[index].description = description;
-      setFilePreviews(newFilePreviews);
+
+  // Handle drag events
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
     }
   };
-  
-  // Get file icon based on type
-  const getFileIcon = useCallback((type: string) => {
-    switch (type) {
-      case 'image':
-        return <div className="w-8 h-8 flex items-center justify-center bg-blue-100 text-blue-600 rounded-md">📷</div>;
-      case 'application':
-        return <div className="w-8 h-8 flex items-center justify-center bg-orange-100 text-orange-600 rounded-md">📄</div>;
-      default:
-        return <div className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-600 rounded-md">📁</div>;
+
+  // Handle drop event
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const newFiles = Array.from(e.dataTransfer.files);
+      setMediaFiles([...mediaFiles, ...newFiles]);
     }
-  }, []);
+  };
+
+  // Remove a file from the list
+  const removeFile = (index: number) => {
+    setMediaFiles(mediaFiles.filter((_, i) => i !== index));
+  };
+
+  // Handle button click to open file dialog
+  const handleSelectFilesClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    document.getElementById('file-upload')?.click();
+  };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" onClick={(e) => e.stopPropagation()}>
       <div>
-        <h2 className="text-xl font-semibold mb-4">Project Media</h2>
+        <h2 className="text-xl font-semibold mb-4">Upload Project Photos</h2>
         <p className="text-gray-600 mb-6">
-          Add photos, documents, or measurements to help contractors understand your project.
+          Add photos to help contractors understand your project better.
         </p>
       </div>
 
-      {/* Drag & Drop Uploader */}
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-        <input
-          type="file"
-          id="file-upload"
-          multiple
-          accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx"
-          onChange={(e) => handleFileChange(e.target.files)}
-          className="hidden"
-        />
-        
-        <label 
-          htmlFor="file-upload"
-          className="flex flex-col items-center justify-center cursor-pointer"
-        >
-          <div className="w-12 h-12 flex items-center justify-center bg-gray-100 text-gray-600 rounded-md">📁</div>
-          <p className="text-lg font-medium mb-2">Drag and drop files here</p>
-          <p className="text-gray-500 mb-4">or click to browse your files</p>
-          <Button variant="outline" type="button">
-            Select Files
-          </Button>
-          <p className="text-xs text-gray-400 mt-4">
-            Supported file types: JPG, PNG, PDF, DOC, XLS (up to {MAX_FILE_SIZE}MB)
+      {/* Upload Area */}
+      <Card 
+        className={`border-2 border-dashed p-8 text-center ${
+          dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+        }`}
+        onDragEnter={handleDrag}
+        onDragOver={handleDrag}
+        onDragLeave={handleDrag}
+        onDrop={handleDrop}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <div className="p-3 rounded-full bg-blue-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-lg font-medium">Drag & drop your photos here</h3>
+            <p className="text-sm text-gray-500 mt-1">or click to browse your files</p>
+          </div>
+          <div>
+            <Button 
+              variant="outline" 
+              onClick={handleSelectFilesClick}
+              className="mt-2"
+              type="button"
+            >
+              Select Files
+            </Button>
+            <input
+              id="file-upload"
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              onChange={handleFileChange}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Supported formats: JPG, PNG, GIF (Max 10MB per file)
           </p>
-        </label>
-      </div>
-      
-      {uploadError && (
-        <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm">
-          {uploadError}
         </div>
-      )}
-      
-      {/* File Preview List */}
-      {filePreviews.length > 0 && (
-        <div className="space-y-4 mt-6">
-          <h3 className="text-lg font-medium">Uploaded Files</h3>
-          
-          <div className="space-y-4">
-            {filePreviews.map((item, index) => (
-              <div 
-                key={`${item.file.name}-${index}`} 
-                className="flex items-start p-4 border rounded-lg"
-              >
-                {/* Preview or Icon */}
-                <div className="flex-shrink-0 w-16 h-16 flex items-center justify-center bg-gray-100 rounded-md mr-4">
-                  {item.preview ? (
-                    <img 
-                      src={item.preview} 
-                      alt={item.file.name} 
-                      className="w-full h-full object-cover rounded-md"
-                    />
-                  ) : (
-                    getFileIcon(item.type)
-                  )}
+      </Card>
+
+      {/* Pro Tip */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start space-x-3">
+        <div className="text-amber-500">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <p className="font-medium text-amber-800">Pro Tip</p>
+          <p className="text-sm text-amber-700">
+            Including multiple photos from different angles will help contractors provide more accurate bids. 
+            Consider adding before photos, areas of concern, and inspiration images.
+          </p>
+        </div>
+      </div>
+
+      {/* Preview Grid */}
+      {mediaFiles.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-medium mb-4">Uploaded Photos ({mediaFiles.length})</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {mediaFiles.map((file, index) => (
+              <div key={index} className="relative group">
+                <div className="aspect-square rounded-lg overflow-hidden bg-gray-100 border">
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={`Upload ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-                
-                {/* File Info */}
-                <div className="flex-grow">
-                  <div className="flex justify-between">
-                    <p className="font-medium">{item.file.name}</p>
-                    <Button 
-                      variant="ghost" 
-                      onClick={() => handleRemoveFile(index)}
-                      className="text-gray-500 hover:text-red-600"
-                    >
-                      ✕
-                    </Button>
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    {(item.file.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                  
-                  {/* Description Input */}
-                  <div className="mt-2">
-                    <Textarea
-                      placeholder="Add a description for this file (optional)"
-                      value={item.description}
-                      onChange={(e) => handleUpdateDescription(index, e.target.value)}
-                      className="text-sm min-h-[60px]"
-                    />
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeFile(index);
+                  }}
+                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <p className="text-xs text-gray-500 truncate mt-1">{file.name}</p>
               </div>
             ))}
           </div>
         </div>
       )}
-      
-      {/* Media Tips */}
-      <div className="bg-blue-50 p-4 rounded-md mt-4">
-        <h4 className="text-sm font-medium text-blue-700 mb-2">Tips for project media:</h4>
-        <ul className="text-sm text-blue-600 space-y-1 list-disc pl-5">
-          <li>Add close-up photos of areas needing work</li>
-          <li>Include wide shots to show the overall space</li>
-          <li>Upload plans or sketches if you have them</li>
-          <li>Add measurements or diagrams for clarity</li>
-          <li>Consider adding before photos for renovation projects</li>
-        </ul>
-      </div>
     </div>
   );
 }
