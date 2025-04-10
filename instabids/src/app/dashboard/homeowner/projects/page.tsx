@@ -118,7 +118,11 @@ const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: 
           </div>
           <div>
             <span className="text-gray-500">Location</span>
-            <p className="font-medium">{project.location}</p>
+            <p className="font-medium">
+              {typeof project.location === 'object' 
+                ? `${project.location.city || ''}, ${project.location.state || ''} ${project.location.zip_code || ''}`
+                : project.location || 'Not specified'}
+            </p>
           </div>
           <div>
             <span className="text-gray-500">Size</span>
@@ -350,14 +354,44 @@ export default function ProjectsPage() {
 
   // Handle viewing a project
   const handleViewProject = (project: any) => {
-    // If this is the last submitted project with media, show the bid card view
-    if (project.hasMedia) {
+    try {
+      // Format the project data for viewing
+      const formattedProject = {
+        data: {
+          title: project.title || 'Untitled Project',
+          description: project.description || 'No description provided',
+          job_type_id: project.job_type_id || project.type || 'one-time',
+          job_size: project.job_size || project.size || 'medium',
+          group_bidding_enabled: project.group_bidding_enabled || false,
+          // Format location as a proper object
+          location: typeof project.location === 'object' 
+            ? project.location 
+            : {
+                city: project.location?.split(',')[0]?.trim() || '',
+                state: project.location?.split(',')[1]?.trim() || '',
+                zip_code: project.zip_code || ''
+              },
+          // Format budget as strings
+          budget_min: project.budget_min || (project.budget ? project.budget.split('-')[0]?.trim() : ''),
+          budget_max: project.budget_max || (project.budget ? project.budget.split('-')[1]?.trim() : ''),
+          // Format timeline
+          timeline_start: project.timeline_start || (project.timeline ? project.timeline.split('-')[0]?.trim() : ''),
+          timeline_end: project.timeline_end || (project.timeline ? project.timeline.split('-')[1]?.trim() : '')
+        },
+        submittedAt: project.created_at || project.createdAt || new Date().toISOString()
+      };
+      
+      // Store the formatted project data in localStorage
+      localStorage.setItem('lastSubmittedProject', JSON.stringify(formattedProject));
+      
       // Navigate to the bid card form with a query parameter to show the view
       router.push('/bid-card?view=true');
-    } else {
+    } catch (error) {
+      console.error('Error viewing project:', error);
       toast({
-        title: 'Project Details',
-        description: 'Viewing project details is not implemented for sample projects.',
+        title: 'Error',
+        description: 'Failed to view project details. Please try again.',
+        variant: 'destructive',
       });
     }
   };
