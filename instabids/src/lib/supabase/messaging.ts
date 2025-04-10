@@ -48,19 +48,16 @@ function cleanProjectId(projectId: string): string {
     return projectId.substring(8); // Remove 'project-' prefix
   }
   
-  // Check if the project ID is a numeric string that might be mistaken for a UUID
-  // This handles the case where we get errors like "invalid input syntax for type uuid"
-  if (/^\d+$/.test(projectId)) {
-    console.log('Converting numeric project ID to string format');
-    return projectId;
-  }
-  
   return projectId;
 }
 
 // Helper function to determine if a table exists
 async function tableExists(supabase: any, tableName: string): Promise<boolean> {
   try {
+    // Split schema and table name
+    const parts = tableName.split('.');
+    const tableNameOnly = parts.length > 1 ? parts[1] : tableName;
+    
     // Try to query the table
     const { error } = await supabase
       .from(tableName)
@@ -75,28 +72,47 @@ async function tableExists(supabase: any, tableName: string): Promise<boolean> {
   }
 }
 
-// Helper function to get the correct table name
-async function getCorrectTableName(supabase: any, tableName: string): Promise<string> {
+// Initialize messaging schema and tables if they don't exist
+export async function initializeMessagingSchema(): Promise<boolean> {
+  const supabase = createClient();
+  
   try {
-    // Check if the table exists with the messaging schema
-    const messagingTableExists = await tableExists(supabase, `messaging.${tableName}`);
+    // Check if the messages table exists
+    const messagesTableExists = await tableExists(supabase, 'messages');
     
-    if (messagingTableExists) {
-      return `messaging.${tableName}`;
+    if (!messagesTableExists) {
+      console.log('messages table does not exist');
+      
+      // Since we can't create tables directly with the client API,
+      // we'll use a workaround by creating a simple messages table in the public schema
+      
+      // First, let's try to create a dummy message to see if the table exists
+      const { error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          project_id: 'test-project',
+          sender_id: '00000000-0000-0000-0000-000000000000',
+          recipient_id: '00000000-0000-0000-0000-000000000000',
+          content: 'Test message'
+        });
+      
+      if (insertError) {
+        console.error('Error creating messages table:', insertError);
+        console.log('You need to create the messages table manually in your Supabase dashboard');
+        
+        // Return false to indicate that initialization failed
+        return false;
+      }
+      
+      console.log('Successfully created messages table');
+    } else {
+      console.log('messages table already exists');
     }
     
-    // If not, try without the schema prefix
-    const publicTableExists = await tableExists(supabase, tableName);
-    
-    if (publicTableExists) {
-      return tableName;
-    }
-    
-    console.error(`Table ${tableName} does not exist`);
-    throw new Error(`Table ${tableName} does not exist`);
+    return true;
   } catch (error) {
-    console.error(`Error getting correct table name for ${tableName}:`, error);
-    throw error;
+    console.error('Error in initializeMessagingSchema:', error);
+    return false;
   }
 }
 
@@ -129,50 +145,30 @@ export async function getMessages(
     const cleanedProjectId = cleanProjectId(projectId);
     console.log('Using project ID for messages query:', cleanedProjectId);
     
-    // Check if the messaging.messages table exists
-    const messagesTableExists = await tableExists(supabase, 'messaging.messages');
+    // Initialize messaging schema if needed
+    const schemaInitialized = await initializeMessagingSchema();
     
-    if (!messagesTableExists) {
-      console.error('messaging.messages table does not exist');
+    if (!schemaInitialized) {
+      console.error('Failed to initialize messaging schema');
       return [];
     }
     
-    // Try with messaging schema
+    // Query messages with proper handling of project ID
     const { data, error } = await supabase
-      .from('messaging.messages')
+      .from('messages')
       .select('*')
       .eq('project_id', cleanedProjectId)
-      .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${contractorId}),and(sender_id.eq.${contractorId},recipient_id.eq.${currentUserId})`)
+      .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
+      .or(`sender_id.eq.${contractorId},recipient_id.eq.${contractorId}`)
       .order('created_at', { ascending: true });
-      
+    
     if (error) {
       console.error('Error fetching messages:', error);
-      
-      // Try without schema prefix as fallback
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('project_id', cleanedProjectId)
-        .or(`and(sender_id.eq.${currentUserId},recipient_id.eq.${contractorId}),and(sender_id.eq.${contractorId},recipient_id.eq.${currentUserId})`)
-        .order('created_at', { ascending: true });
-        
-      if (fallbackError) {
-        console.error('Error fetching messages (fallback):', fallbackError);
-        return [];
-      }
-      
-      // Transform the fallback data
-      return (fallbackData || []).map(msg => ({
-        id: msg.id,
-        senderId: msg.sender_id,
-        content: msg.content,
-        timestamp: msg.created_at,
-        isOwn: msg.sender_id === currentUserId
-      }));
+      return [];
     }
     
     // Transform the data to match the format expected by the EnhancedMessaging component
-    return (data || []).map(msg => ({
+    return (data || []).map((msg: any) => ({
       id: msg.id,
       senderId: msg.sender_id,
       content: msg.content,
@@ -214,19 +210,7 @@ export async function getContractorsForProject(
     const cleanedProjectId = cleanProjectId(projectId);
     console.log('Using project ID for contractors query:', cleanedProjectId);
     
-    // First, check if the project exists
-    const { data: projectData, error: projectError } = await supabase
-      .from('projects')
-      .select('id')
-      .eq('id', cleanedProjectId)
-      .single();
-      
-    if (projectError) {
-      console.error('Error finding project:', projectError);
-      console.log('Project may not exist or ID format is incorrect');
-    }
-    
-    // Query the bids table with improved error handling
+    // Query the bids table with proper error handling for project ID format
     const { data, error } = await supabase
       .from('bids')
       .select(`
@@ -254,27 +238,18 @@ export async function getContractorsForProject(
         
       if (basicError) {
         console.error('Error with basic contractor query:', basicError);
-        
-        // Return mock data for debugging
-        console.log('Returning mock contractor data for debugging');
-        return [{
-          id: 'mock-contractor-1',
-          name: 'Mock Contractor',
-          company: 'Mock Company',
-          bidAmount: 1000,
-          status: 'pending',
-          avatar: undefined
-        }];
+        return [];
       }
       
       // If we got basic data but no profiles, fetch profiles separately
-      const contractorIds = basicData.map(bid => bid.contractor_id);
+      const contractorIds = basicData.map((bid: any) => bid.contractor_id);
       
       if (contractorIds.length === 0) {
         console.log('No contractors found for this project');
         return [];
       }
       
+      // Fetch profiles for the contractors
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, full_name, company_name, avatar_url')
@@ -284,7 +259,7 @@ export async function getContractorsForProject(
         console.error('Error fetching contractor profiles:', profilesError);
         
         // Map the basic data without profiles
-        return basicData.map(bid => ({
+        return basicData.map((bid: any) => ({
           id: bid.contractor_id,
           name: `Contractor ${bid.contractor_id.substring(0, 8)}`,
           bidAmount: bid.amount,
@@ -294,8 +269,8 @@ export async function getContractorsForProject(
       }
       
       // Map the basic data with profiles
-      return basicData.map(bid => {
-        const profile = profilesData.find(p => p.id === bid.contractor_id);
+      return basicData.map((bid: any) => {
+        const profile = profilesData.find((p: any) => p.id === bid.contractor_id);
         return {
           id: bid.contractor_id,
           name: profile?.full_name || `Contractor ${bid.contractor_id.substring(0, 8)}`,
@@ -307,10 +282,8 @@ export async function getContractorsForProject(
       });
     }
     
-    console.log('Contractor data:', data);
-    
     // Transform the data to match the format expected by the EnhancedMessaging component
-    return (data || []).map(bid => {
+    return (data || []).map((bid: any) => {
       // Properly handle the profiles object which might be null or undefined
       const profiles = bid.profiles as { 
         id?: string; 
@@ -330,16 +303,7 @@ export async function getContractorsForProject(
     });
   } catch (error) {
     console.error('Error in getContractorsForProject:', error);
-    
-    // Return mock data for debugging
-    return [{
-      id: 'mock-contractor-1',
-      name: 'Mock Contractor',
-      company: 'Mock Company',
-      bidAmount: 1000,
-      status: 'pending',
-      avatar: undefined
-    }];
+    return [];
   }
 }
 
@@ -350,14 +314,8 @@ export async function sendMessage(
   projectId: string,
   contractorId: string,
   content: string,
-  files: File[] = []
-): Promise<{
-  id: string;
-  senderId: string;
-  content: string;
-  timestamp: string;
-  isOwn: boolean;
-}> {
+  files?: File[]
+): Promise<boolean> {
   const supabase = createClient();
   
   try {
@@ -366,136 +324,109 @@ export async function sendMessage(
     const currentUserId = session?.user?.id;
     
     if (!currentUserId) {
-      throw new Error('No authenticated user found');
+      console.error('No authenticated user found');
+      return false;
     }
     
     // Clean the project ID
     const cleanedProjectId = cleanProjectId(projectId);
     console.log('Using project ID for sending message:', cleanedProjectId);
     
-    // Check if the messaging.messages table exists
-    const messagesTableExists = await tableExists(supabase, 'messaging.messages');
+    // Initialize messaging schema if needed
+    const schemaInitialized = await initializeMessagingSchema();
     
-    if (!messagesTableExists) {
-      console.error('messaging.messages table does not exist');
-      throw new Error('messaging.messages table does not exist');
+    if (!schemaInitialized) {
+      console.error('Failed to initialize messaging schema');
+      return false;
     }
     
-    // Try with messaging schema
-    const { data: messageData, error } = await supabase
-      .from('messaging.messages')
+    // Insert the message
+    const { data: messageData, error: messageError } = await supabase
+      .from('messages')
       .insert({
         project_id: cleanedProjectId,
         sender_id: currentUserId,
         recipient_id: contractorId,
         content
       })
-      .select()
-      .single();
+      .select();
+    
+    if (messageError) {
+      console.error('Error sending message:', messageError);
+      return false;
+    }
+    
+    // Handle file uploads if provided
+    if (files && files.length > 0 && messageData && messageData.length > 0) {
+      const messageId = messageData[0].id;
       
-    if (error) {
-      console.error('Error sending message:', error);
-      
-      // Try without schema prefix as fallback
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('messages')
-        .insert({
-          project_id: cleanedProjectId,
-          sender_id: currentUserId,
-          recipient_id: contractorId,
-          content
-        })
-        .select()
-        .single();
+      for (const file of files) {
+        // Upload the file to storage
+        const fileName = `${Date.now()}-${file.name}`;
+        const filePath = `messages/${messageId}/${fileName}`;
         
-      if (fallbackError) {
-        console.error('Error sending message (fallback):', fallbackError);
-        throw fallbackError;
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(filePath, file);
+          
+        if (uploadError) {
+          console.error('Error uploading file:', uploadError);
+          continue;
+        }
+        
+        // Get the public URL for the file
+        const { data: urlData } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(filePath);
+          
+        const fileUrl = urlData?.publicUrl;
+        
+        if (!fileUrl) {
+          console.error('Failed to get public URL for file');
+          continue;
+        }
+        
+        // Insert attachment record
+        const { error: attachmentError } = await supabase
+          .from('attachments')
+          .insert({
+            message_id: messageId,
+            file_name: fileName,
+            file_size: file.size,
+            file_type: file.type,
+            file_url: fileUrl
+          });
+        
+        if (attachmentError) {
+          console.error('Error inserting attachment record:', attachmentError);
+        }
       }
-      
-      return {
-        id: fallbackData.id,
-        senderId: fallbackData.sender_id,
-        content: fallbackData.content,
-        timestamp: fallbackData.created_at,
-        isOwn: true
-      };
     }
     
-    // If there are files, upload them and create attachments
-    if (files.length > 0 && messageData) {
-      await Promise.all(
-        files.map(async (file) => {
-          // Upload the file to storage
-          const fileExt = file.name.split('.').pop() || '';
-          const fileName = `${messageData.id}-${Date.now()}.${fileExt}`;
-          const filePath = `messages/${cleanedProjectId}/${fileName}`;
-          
-          const { error: uploadError } = await supabase
-            .storage
-            .from('message-attachments')
-            .upload(filePath, file);
-            
-          if (uploadError) {
-            console.error('Error uploading file:', uploadError);
-            throw uploadError;
-          }
-          
-          // Get the public URL
-          const { data: publicUrlData } = supabase
-            .storage
-            .from('message-attachments')
-            .getPublicUrl(filePath);
-          
-          const publicUrl = publicUrlData?.publicUrl || '';
-          
-          // Create the attachment record
-          const { error: attachmentError } = await supabase
-            .from('messaging.attachments')
-            .insert({
-              message_id: messageData.id,
-              file_name: file.name,
-              file_size: file.size,
-              file_type: file.type,
-              file_url: publicUrl
-            });
-            
-          if (attachmentError) {
-            console.error('Error creating attachment:', attachmentError);
-            throw attachmentError;
-          }
-        })
-      );
-    }
-    
-    // Return the message in the format expected by the EnhancedMessaging component
-    return {
-      id: messageData.id,
-      senderId: messageData.sender_id,
-      content: messageData.content,
-      timestamp: messageData.created_at,
-      isOwn: true
-    };
+    console.log('Message sent successfully');
+    return true;
   } catch (error) {
-    console.error('Error in sendMessage:', error);
-    // Return a default message in case of error
-    return {
-      id: 'error',
-      senderId: '',
-      content: 'Error sending message',
-      timestamp: new Date().toISOString(),
-      isOwn: true
-    };
+    console.error('Error sending message:', error);
+    return false;
   }
 }
 
 /**
- * Get the homeowner for a bid card
+ * Get the homeowner for a project
  */
-export async function getHomeownerForBidCard(projectId: string): Promise<User | null> {
+export async function getHomeownerForProject(projectId: string): Promise<string | null> {
   const supabase = createClient();
   
   try {
+    // Get the current user ID
+    const { data: { session } } = await supabase.auth.getSession();
+    const currentUserId = session?.user?.id;
+    
+    if (!currentUserId) {
+      console.error('No authenticated user found');
+      return null;
+    }
+    
     // Clean the project ID
     const cleanedProjectId = cleanProjectId(projectId);
     console.log('Using project ID for homeowner query:', cleanedProjectId);
@@ -509,7 +440,7 @@ export async function getHomeownerForBidCard(projectId: string): Promise<User | 
       
     let homeownerId;
     
-    if (!projectError && projectData?.homeowner_id) {
+    if (projectData?.homeowner_id) {
       homeownerId = projectData.homeowner_id;
       console.log('Found homeowner_id in projects table:', homeownerId);
     } else {
@@ -526,29 +457,12 @@ export async function getHomeownerForBidCard(projectId: string): Promise<User | 
       }
       
       homeownerId = bidCardData.creator_id;
-      console.log('Found creator_id in bidding.bid_cards table:', homeownerId);
+      console.log('Found creator_id in bid_cards table:', homeownerId);
     }
     
-    // Fetch the homeowner profile
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', homeownerId)
-      .single();
-      
-    if (profileError) {
-      console.error('Error fetching homeowner profile:', profileError);
-      throw profileError;
-    }
-    
-    return {
-      id: profileData.id,
-      name: profileData.full_name || 'Unknown Homeowner',
-      avatar_url: profileData.avatar_url,
-      role: 'homeowner'
-    };
+    return homeownerId;
   } catch (error) {
-    console.error('Error in getHomeownerForBidCard:', error);
+    console.error('Error in getHomeownerForProject:', error);
     return null;
   }
 }
@@ -557,81 +471,99 @@ export async function getHomeownerForBidCard(projectId: string): Promise<User | 
  * Subscribe to new messages
  */
 export function subscribeToMessages(
-  projectId: string, 
-  userId: string,
-  callback: (message: Message) => void
+  projectId: string,
+  contractorId: string,
+  callback: (message: {
+    id: string;
+    senderId: string;
+    content: string;
+    timestamp: string;
+    isOwn: boolean;
+  }) => void
 ): () => void {
   const supabase = createClient();
+  
+  // Clean the project ID
   const cleanedProjectId = cleanProjectId(projectId);
   
-  // Try with both field names (project_id and bid_card_id)
-  const channel = supabase
-    .channel(`messages-${cleanedProjectId}`)
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'messaging',
-      table: 'messages',
-      filter: `project_id=eq.${cleanedProjectId}`,
-    }, (payload) => {
-      callback(payload.new as Message);
-    })
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'messaging',
-      table: 'messages',
-      filter: `bid_card_id=eq.${cleanedProjectId}`,
-    }, (payload) => {
-      callback(payload.new as Message);
-    })
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'messages',
-      filter: `project_id=eq.${cleanedProjectId}`,
-    }, (payload) => {
-      callback(payload.new as Message);
-    })
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'messages',
-      filter: `bid_card_id=eq.${cleanedProjectId}`,
-    }, (payload) => {
-      callback(payload.new as Message);
-    })
+  // Subscribe to new messages
+  const subscription = supabase
+    .channel(`messages:${cleanedProjectId}:${contractorId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `project_id=eq.${cleanedProjectId}`
+      },
+      (payload) => {
+        const message = payload.new as any;
+        
+        // Get the current user ID
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          const currentUserId = session?.user?.id;
+          
+          // Check if the message is relevant to this conversation
+          if (
+            (message.sender_id === currentUserId && message.recipient_id === contractorId) ||
+            (message.sender_id === contractorId && message.recipient_id === currentUserId)
+          ) {
+            // Transform the message to match the format expected by the EnhancedMessaging component
+            callback({
+              id: message.id,
+              senderId: message.sender_id,
+              content: message.content,
+              timestamp: message.created_at,
+              isOwn: message.sender_id === currentUserId
+            });
+          }
+        });
+      }
+    )
     .subscribe();
   
+  // Return a function to unsubscribe
   return () => {
-    supabase.removeChannel(channel);
+    supabase.removeChannel(subscription);
   };
 }
 
 /**
- * Get a message by ID (with attachments)
+ * Get a message by ID
  */
-export async function getMessageById(messageId: string): Promise<Message | null> {
+export async function getMessageById(messageId: string): Promise<{
+  id: string;
+  senderId: string;
+  recipientId: string;
+  content: string;
+  timestamp: string;
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    fileUrl: string;
+    fileSize: number;
+  }>;
+} | null> {
   const supabase = createClient();
   
   try {
-    // Determine the correct table names
-    const messagesTable = await getCorrectTableName(supabase, 'messages');
-    const attachmentsTable = await getCorrectTableName(supabase, 'attachments');
-    
     // Get the message
     const { data: message, error } = await supabase
-      .from(messagesTable)
+      .from('messages')
       .select('*')
       .eq('id', messageId)
       .single();
       
     if (error) {
       console.error('Error fetching message:', error);
-      throw error;
+      return null;
     }
     
     // Get attachments for this message
     const { data: attachments, error: attachmentsError } = await supabase
-      .from(attachmentsTable)
+      .from('attachments')
       .select('*')
       .eq('message_id', messageId);
       
@@ -639,59 +571,23 @@ export async function getMessageById(messageId: string): Promise<Message | null>
       console.error('Error fetching attachments:', attachmentsError);
     }
     
+    // Transform the data
     return {
-      ...message,
-      attachments: attachments || []
+      id: message.id,
+      senderId: message.sender_id,
+      recipientId: message.recipient_id,
+      content: message.content,
+      timestamp: message.created_at,
+      attachments: (attachments || []).map((attachment: any) => ({
+        id: attachment.id,
+        fileName: attachment.file_name,
+        fileType: attachment.file_type,
+        fileUrl: attachment.file_url,
+        fileSize: attachment.file_size
+      }))
     };
   } catch (error) {
     console.error('Error in getMessageById:', error);
     return null;
-  }
-}
-
-/**
- * Get attachments for a message
- */
-export async function getAttachmentsForMessage(messageId: string): Promise<Attachment[]> {
-  const supabase = createClient();
-  
-  try {
-    // Check if the messaging.attachments table exists
-    const attachmentsTableExists = await tableExists(supabase, 'messaging.attachments');
-    
-    if (!attachmentsTableExists) {
-      console.error('messaging.attachments table does not exist');
-      return [];
-    }
-    
-    // Try with messaging schema
-    const { data, error } = await supabase
-      .from('messaging.attachments')
-      .select('*')
-      .eq('message_id', messageId)
-      .order('created_at', { ascending: true });
-      
-    if (error) {
-      console.error('Error fetching attachments:', error);
-      
-      // Try without schema prefix as fallback
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('attachments')
-        .select('*')
-        .eq('message_id', messageId)
-        .order('created_at', { ascending: true });
-        
-      if (fallbackError) {
-        console.error('Error fetching attachments (fallback):', fallbackError);
-        return [];
-      }
-      
-      return fallbackData || [];
-    }
-    
-    return data || [];
-  } catch (error) {
-    console.error('Error in getAttachmentsForMessage:', error);
-    return [];
   }
 }

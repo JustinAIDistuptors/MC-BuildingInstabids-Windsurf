@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { Loader2, AlertCircle } from 'lucide-react';
-import { sendMessage, getMessages, getContractorsForProject } from '@/lib/supabase/messaging';
+import { getContractorsForProject, getMessages, initializeMessagingSchema, sendMessage } from '@/lib/supabase/messaging';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface EnhancedMessagingProps {
@@ -95,99 +95,116 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
   }, [projectId]);
 
   useEffect(() => {
-    async function fetchMessages() {
+    const fetchMessages = async () => {
       if (!selectedContractorId || !projectId) return;
       
+      setLoading(true);
+      
       try {
-        setError(null);
-        console.log('Fetching messages for project:', projectId, 'and contractor:', selectedContractorId);
-        // Fetch real messages for this contractor and project
         const fetchedMessages = await getMessages(projectId, selectedContractorId);
-        console.log('Fetched messages:', fetchedMessages);
         
-        if (fetchedMessages && fetchedMessages.length > 0) {
-          setMessages(prev => ({
-            ...prev,
-            [selectedContractorId]: fetchedMessages
-          }));
-        } else {
-          // No messages found
-          setMessages(prev => ({
-            ...prev,
-            [selectedContractorId]: []
-          }));
-        }
+        setMessages((prev) => ({
+          ...prev,
+          [selectedContractorId]: fetchedMessages,
+        }));
       } catch (error) {
         console.error('Error fetching messages:', error);
-        setMessages(prev => ({
-          ...prev,
-          [selectedContractorId]: []
-        }));
-        
-        // Check if the error indicates missing tables
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
-          setSetupNeeded(true);
-          setError("Messaging system needs to be set up. Please contact support.");
-        } else {
-          setError("Failed to load messages. Please try again later.");
-        }
+        toast({
+          title: 'Error',
+          description: 'Failed to load messages. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
       }
-    }
+    };
 
     fetchMessages();
   }, [selectedContractorId, projectId]);
+
+  useEffect(() => {
+    // Initialize the messaging schema when the component mounts
+    const initMessaging = async () => {
+      try {
+        await initializeMessagingSchema();
+      } catch (error) {
+        console.error('Error initializing messaging schema:', error);
+      }
+    };
+    
+    initMessaging();
+  }, []);
 
   // Get messages for the selected contractor
   const contractorMessages = selectedContractorId ? (messages[selectedContractorId] || []) : [];
   const selectedContractor = contractors.find((c) => c.id === selectedContractorId) || null;
 
   // Handle sending a message
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedContractorId || !projectId) return;
-
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!selectedContractorId || !newMessage.trim() || !projectId) {
+      return;
+    }
+    
     setSendingMessage(true);
-    setError(null);
     
     try {
       console.log('Sending message to contractor:', selectedContractorId, 'for project:', projectId);
       // Send the message
-      const result = await sendMessage(projectId, selectedContractorId, newMessage);
-      console.log('Message send result:', result);
+      const success = await sendMessage(projectId, selectedContractorId, newMessage);
       
-      if (result && result.id && result.id !== 'error') {
+      if (success) {
         // Add the new message to the state
         setMessages((prev) => ({
           ...prev,
-          [selectedContractorId]: [...(prev[selectedContractorId] || []), result as Message],
+          [selectedContractorId]: [...(prev[selectedContractorId] || []), { id: 'new', senderId: 'me', content: newMessage, timestamp: new Date().toISOString(), isOwn: true } as Message],
         }));
 
         setNewMessage('');
-
-        toast({
-          title: 'Message sent',
-          description: 'Your message has been sent successfully.',
-        });
-      } else {
-        throw new Error('Failed to send message');
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      
-      // Check if the error indicates missing tables
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
-        setSetupNeeded(true);
-        setError("Messaging system needs to be set up. Please contact support.");
-      } else {
-        setError("Failed to send message. Please try again later.");
         
+        // Refresh messages after a short delay to get the server-generated message
+        setTimeout(() => {
+          const fetchMessages = async () => {
+            if (!selectedContractorId || !projectId) return;
+            
+            setLoading(true);
+            
+            try {
+              const fetchedMessages = await getMessages(projectId, selectedContractorId);
+              
+              setMessages((prev) => ({
+                ...prev,
+                [selectedContractorId]: fetchedMessages,
+              }));
+            } catch (error) {
+              console.error('Error fetching messages:', error);
+              toast({
+                title: 'Error',
+                description: 'Failed to load messages. Please try again.',
+                variant: 'destructive',
+              });
+            } finally {
+              setLoading(false);
+            }
+          };
+
+          fetchMessages();
+        }, 1000);
+      } else {
         toast({
           title: 'Error',
           description: 'Failed to send message. Please try again.',
           variant: 'destructive',
         });
       }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast({
+        title: 'Error',
+        description: 'An error occurred while sending your message.',
+        variant: 'destructive',
+      });
     } finally {
       setSendingMessage(false);
     }
@@ -392,29 +409,28 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
             )}
           </CardContent>
           <div className="p-4 border-t mt-auto">
-            <div className="flex gap-2">
+            <form onSubmit={handleSendMessage} className="flex-1 flex space-x-2">
               <Textarea
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={selectedContractor ? "Type your message..." : "Select a contractor to start messaging"}
-                className="min-h-[80px] flex-1 resize-none"
-                disabled={!selectedContractor || sendingMessage}
+                placeholder="Type your message here..."
+                className="flex-1 min-h-[80px]"
+                disabled={sendingMessage || !selectedContractorId}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !sendingMessage) {
                     e.preventDefault();
-                    handleSendMessage();
+                    handleSendMessage(e);
                   }
                 }}
               />
-              <Button
-                onClick={handleSendMessage}
-                disabled={!selectedContractor || !newMessage.trim() || sendingMessage}
-                className="self-end bg-blue-600 hover:bg-blue-700"
+              <Button 
+                type="submit" 
+                disabled={sendingMessage || !newMessage.trim() || !selectedContractorId}
+                className="self-end"
               >
-                {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Send
+                {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
               </Button>
-            </div>
+            </form>
           </div>
         </Card>
       </div>

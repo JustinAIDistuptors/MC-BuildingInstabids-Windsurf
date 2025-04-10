@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { Card } from '@/components/ui/card';
+import ProjectCard, { formatLocation } from '@/components/projects/ProjectCard';
 
 // Mock data for projects
 const MOCK_PROJECTS = [
@@ -82,104 +83,6 @@ const MOCK_PROJECTS = [
     createdAt: '2023-02-15T16:30:00Z',
   },
 ];
-
-// Project card component
-const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: (project: any) => void }) => {
-  return (
-    <Card className="h-full transition-all duration-200 hover:shadow-md">
-      <div className="p-5">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <h3 className="text-lg font-semibold">{project.title}</h3>
-            <div className="text-sm text-gray-500">{project.type} project</div>
-          </div>
-          <div
-            className={`text-xs font-medium px-2.5 py-0.5 rounded ${
-              project.status === 'active' ? 'bg-green-100 text-green-800' :
-              project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-              'bg-gray-100 text-gray-800'
-            }`}
-          >
-            {project.status === 'active' ? 'Active' :
-             project.status === 'completed' ? 'Completed' : 'Archived'}
-          </div>
-        </div>
-        
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
-        
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-4">
-          <div>
-            <span className="text-gray-500">Budget</span>
-            <p className="font-medium">{project.budget}</p>
-          </div>
-          <div>
-            <span className="text-gray-500">Timeline</span>
-            <p className="font-medium">{project.timeline}</p>
-          </div>
-          <div>
-            <span className="text-gray-500">Location</span>
-            <p className="font-medium">
-              {typeof project.location === 'object' 
-                ? `${project.location.city || ''}, ${project.location.state || ''} ${project.location.zip_code || ''}`
-                : project.location || 'Not specified'}
-            </p>
-          </div>
-          <div>
-            <span className="text-gray-500">Size</span>
-            <p className="font-medium capitalize">{project.size}</p>
-          </div>
-          {project.hasMedia && (
-            <div className="col-span-2 mt-1">
-              <div className="flex items-center text-blue-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm">Photos</span>
-              </div>
-            </div>
-          )}
-        </div>
-        
-        <div className="flex justify-between pt-4 border-t border-gray-200">
-          <Button 
-            variant="outline" 
-            onClick={() => onViewDetails(project)}
-            className="px-3 py-1 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors"
-          >
-            View Details
-          </Button>
-          <Button 
-            variant="ghost" 
-            className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1 text-sm transition-colors"
-          >
-            Delete
-          </Button>
-        </div>
-      </div>
-    </Card>
-  );
-};
-
-// Format location for display
-const formatLocation = (location: any): string => {
-  if (!location) return 'Not specified';
-  
-  if (typeof location === 'object') {
-    const city = location.city || '';
-    const state = location.state || '';
-    const zip = location.zip_code || '';
-    
-    if (!city && !state && !zip) return 'Not specified';
-    
-    return [
-      city,
-      state ? (city ? `, ${state}` : state) : '',
-      zip ? ` ${zip}` : ''
-    ].join('');
-  }
-  
-  return location;
-};
 
 // Empty state component
 const EmptyState = ({ onCreateProject }: { onCreateProject: () => void }) => (
@@ -520,11 +423,13 @@ export default function ProjectsPage() {
             <EmptyState onCreateProject={handleCreateNewProject} />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProjects.map(project => (
+              {filteredProjects.map((project) => (
                 <ProjectCard 
                   key={project.id} 
                   project={project} 
                   onViewDetails={handleViewProject} 
+                  onDelete={handleDelete} 
+                  showDeleteButton={true}
                 />
               ))}
             </div>
