@@ -118,7 +118,11 @@ const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: 
           </div>
           <div>
             <span className="text-gray-500">Location</span>
-            <p className="font-medium">{formatLocation(project.location)}</p>
+            <p className="font-medium">
+              {typeof project.location === 'object' 
+                ? `${project.location.city || ''}, ${project.location.state || ''} ${project.location.zip_code || ''}`
+                : project.location || 'Not specified'}
+            </p>
           </div>
           <div>
             <span className="text-gray-500">Size</span>
@@ -372,33 +376,41 @@ export default function ProjectsPage() {
   // Handle viewing a project
   const handleViewProject = (project: any) => {
     try {
-      // Safely prepare project data for localStorage
-      const safeProject = {
+      // Format the project data for storage
+      const formattedProject = {
         data: {
-          title: project.title || 'Untitled Project',
-          description: project.description || 'No description provided',
-          job_type_id: project.job_type_id || project.type || 'one-time',
-          job_size: project.job_size || project.size || 'medium',
-          group_bidding_enabled: project.group_bidding_enabled || false,
-          // Ensure location is a string for storage
-          location: typeof project.location === 'string' 
+          id: project.id,
+          title: project.title,
+          description: project.description,
+          status: project.status,
+          job_type_id: project.type,
+          job_size: project.size,
+          group_bidding_enabled: false,
+          // Format location as a proper object
+          location: typeof project.location === 'object' 
             ? project.location 
             : {
-                city: project.location?.city || '',
-                state: project.location?.state || '',
-                zip_code: project.location?.zip_code || project.zip_code || ''
-              }
+                city: project.location?.split(',')[0]?.trim() || '',
+                state: project.location?.split(',')[1]?.trim() || '',
+                zip_code: project.zip_code || ''
+              },
+          // Format budget as strings
+          budget_min: project.budget_min || (project.budget ? project.budget.split('-')[0]?.trim() : ''),
+          budget_max: project.budget_max || (project.budget ? project.budget.split('-')[1]?.trim() : ''),
+          // Format timeline
+          timeline_start: project.timeline_start || (project.timeline ? project.timeline.split('-')[0]?.trim() : ''),
+          timeline_end: project.timeline_end || (project.timeline ? project.timeline.split('-')[1]?.trim() : '')
         },
-        submittedAt: project.created_at || new Date().toISOString()
+        submittedAt: project.created_at || project.createdAt || new Date().toISOString()
       };
       
-      // Store in localStorage for the bid-card page to access
-      localStorage.setItem('lastSubmittedProject', JSON.stringify(safeProject));
+      // Store the formatted project data in localStorage
+      localStorage.setItem('lastSubmittedProject', JSON.stringify(formattedProject));
       
-      // Navigate to the bid-card page with view=true parameter
+      // Navigate to the bid card form with a query parameter to show the view
       router.push('/bid-card?view=true');
     } catch (error) {
-      console.error('Error preparing project data:', error);
+      console.error('Error viewing project:', error);
       toast({
         title: 'Error',
         description: 'Could not view project details. Please try again.',
