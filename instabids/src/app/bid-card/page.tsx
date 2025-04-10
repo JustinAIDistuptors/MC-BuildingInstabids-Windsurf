@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import EnhancedMessaging from '@/components/messaging/EnhancedMessaging';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Card } from '@/components/ui/card';
+import { Card as BidCard } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import BidCardForm from '@/components/forms/bid-card/BidCardForm';
 
@@ -18,7 +21,7 @@ const BidCardView = ({ bidData, mediaFiles, onBack }: {
       <Button variant="outline" onClick={onBack}>Back to Dashboard</Button>
     </div>
     
-    <Card className="p-6">
+    <BidCard className="p-6">
       <div className="space-y-6">
         <div>
           <h3 className="text-lg font-medium mb-2">Project Details</h3>
@@ -125,7 +128,7 @@ const BidCardView = ({ bidData, mediaFiles, onBack }: {
           <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={onBack}>Return to Dashboard</Button>
         </div>
       </div>
-    </Card>
+    </BidCard>
   </div>
 );
 
@@ -135,7 +138,8 @@ export default function BidCardPage() {
   const [viewMode, setViewMode] = useState(false);
   const [projectData, setProjectData] = useState<any>(null);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
-  
+  const [activeTab, setActiveTab] = useState('details');
+
   useEffect(() => {
     // Check if we're in view mode from query params
     const view = searchParams.get('view');
@@ -169,11 +173,24 @@ export default function BidCardPage() {
     return (
       <div className="container mx-auto py-8">
         <Card className="max-w-4xl mx-auto p-6">
-          <BidCardView 
-            bidData={projectData} 
-            mediaFiles={mediaFiles} 
-            onBack={handleBackToDashboard} 
-          />
+          <Tabs defaultValue="details" onValueChange={setActiveTab} className="w-full">
+            <TabsList className="mb-6 w-full max-w-md">
+              <TabsTrigger value="details" className="flex-1">Project Details</TabsTrigger>
+              <TabsTrigger value="messaging" className="flex-1">Messaging</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="details">
+              <BidCardView 
+                bidData={projectData} 
+                mediaFiles={mediaFiles} 
+                onBack={handleBackToDashboard} 
+              />
+            </TabsContent>
+            
+            <TabsContent value="messaging">
+              <EnhancedMessaging />
+            </TabsContent>
+          </Tabs>
         </Card>
       </div>
     );

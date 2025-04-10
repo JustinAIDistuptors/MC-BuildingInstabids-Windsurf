@@ -85,8 +85,13 @@ export const BidCardService = {
    */
   getBidCard: async (id: string): Promise<{ bidCard: BidCard & { media: any[] } }> => {
     try {
-      const response = await fetch(`/api/bid-cards/${id}`, {
+      // Use the mock API endpoint for development to ensure we always get data
+      const response = await fetch(`/api/mock-bid-cards/${id}`, {
         method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include', // Include cookies in the request
       });
       
       if (!response.ok) {

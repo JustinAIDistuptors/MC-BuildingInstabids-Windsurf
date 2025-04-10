@@ -4,7 +4,7 @@ CREATE SCHEMA IF NOT EXISTS messaging;
 -- Messages table
 CREATE TABLE IF NOT EXISTS messaging.messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  bid_card_id UUID NOT NULL REFERENCES bidding.bid_cards(id) ON DELETE CASCADE,
+  project_id TEXT NOT NULL,
   sender_id UUID NOT NULL REFERENCES auth.users(id),
   recipient_id UUID NOT NULL REFERENCES auth.users(id),
   content TEXT NOT NULL,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS messaging.attachments (
 );
 
 -- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_messages_bid_card_id ON messaging.messages(bid_card_id);
+CREATE INDEX IF NOT EXISTS idx_messages_project_id ON messaging.messages(project_id);
 CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messaging.messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_messages_recipient_id ON messaging.messages(recipient_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_message_id ON messaging.attachments(message_id);
@@ -61,9 +61,9 @@ CREATE POLICY attachments_insert_policy ON messaging.attachments
     )
   );
 
--- Create function to get messages between two users for a bid card
+-- Create function to get messages between two users for a project
 CREATE OR REPLACE FUNCTION messaging.get_messages(
-  p_bid_card_id UUID,
+  p_project_id TEXT,
   p_user_id UUID,
   p_other_user_id UUID
 )
@@ -73,7 +73,7 @@ SECURITY DEFINER
 AS $$
   SELECT m.*
   FROM messaging.messages m
-  WHERE m.bid_card_id = p_bid_card_id
+  WHERE m.project_id = p_project_id
     AND (
       (m.sender_id = p_user_id AND m.recipient_id = p_other_user_id)
       OR
@@ -82,9 +82,9 @@ AS $$
   ORDER BY m.created_at ASC;
 $$;
 
--- Create function to get contractors for a bid card
-CREATE OR REPLACE FUNCTION messaging.get_contractors_for_bid_card(
-  p_bid_card_id UUID
+-- Create function to get contractors for a project
+CREATE OR REPLACE FUNCTION messaging.get_contractors_for_project(
+  p_project_id TEXT
 )
 RETURNS TABLE (
   contractor_id UUID,
@@ -102,8 +102,10 @@ AS $$
     p.company_name,
     b.amount AS bid_amount,
     b.status AS bid_status
-  FROM bidding.bids b
-  JOIN auth.users u ON b.contractor_id = u.id
-  JOIN public.profiles p ON u.id = p.id
-  WHERE b.bid_card_id = p_bid_card_id;
+  FROM 
+    bids b
+  JOIN 
+    profiles p ON b.contractor_id = p.id
+  WHERE 
+    b.project_id = p_project_id;
 $$;

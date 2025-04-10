@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { sendMessage, getMessages, getContractorsForProject } from '@/lib/supabase/messaging';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 interface EnhancedMessagingProps {
   projectId?: string;
@@ -16,10 +17,10 @@ interface EnhancedMessagingProps {
 interface Contractor {
   id: string;
   name: string;
-  company: string | undefined;
-  bidAmount: number | undefined;
+  company?: string | undefined;
+  bidAmount?: number | undefined;
   status: 'pending' | 'accepted' | 'rejected';
-  avatar: string | undefined;
+  avatar?: string | undefined;
 }
 
 // This interface must match exactly what getMessages returns
@@ -38,15 +39,21 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [loading, setLoading] = useState<boolean>(true);
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [setupNeeded, setSetupNeeded] = useState<boolean>(false);
 
   useEffect(() => {
     async function fetchContractors() {
       try {
         setLoading(true);
+        setError(null);
         
         if (projectId) {
+          console.log('Fetching contractors for project:', projectId);
           // Fetch real contractors for this project
           const fetchedContractors = await getContractorsForProject(projectId);
+          console.log('Fetched contractors:', fetchedContractors);
+          
           if (fetchedContractors && fetchedContractors.length > 0) {
             // Type assertion to ensure compatibility
             setContractors(fetchedContractors as Contractor[]);
@@ -58,16 +65,27 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
             // No contractors found for this project
             setContractors([]);
             setSelectedContractorId('');
+            setError("No contractors have bid on this project yet.");
           }
         } else {
           // No project ID provided
           setContractors([]);
           setSelectedContractorId('');
+          setError("No project ID provided.");
         }
       } catch (error) {
         console.error('Error fetching contractors:', error);
         setContractors([]);
         setSelectedContractorId('');
+        
+        // Check if the error indicates missing tables
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
+          setSetupNeeded(true);
+          setError("Messaging system needs to be set up. Please contact support.");
+        } else {
+          setError("Failed to load contractors. Please try again later.");
+        }
       } finally {
         setLoading(false);
       }
@@ -81,8 +99,12 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
       if (!selectedContractorId || !projectId) return;
       
       try {
+        setError(null);
+        console.log('Fetching messages for project:', projectId, 'and contractor:', selectedContractorId);
         // Fetch real messages for this contractor and project
         const fetchedMessages = await getMessages(projectId, selectedContractorId);
+        console.log('Fetched messages:', fetchedMessages);
+        
         if (fetchedMessages && fetchedMessages.length > 0) {
           setMessages(prev => ({
             ...prev,
@@ -101,6 +123,15 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
           ...prev,
           [selectedContractorId]: []
         }));
+        
+        // Check if the error indicates missing tables
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
+          setSetupNeeded(true);
+          setError("Messaging system needs to be set up. Please contact support.");
+        } else {
+          setError("Failed to load messages. Please try again later.");
+        }
       }
     }
 
@@ -116,12 +147,15 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
     if (!newMessage.trim() || !selectedContractorId || !projectId) return;
 
     setSendingMessage(true);
+    setError(null);
     
     try {
+      console.log('Sending message to contractor:', selectedContractorId, 'for project:', projectId);
       // Send the message
       const result = await sendMessage(projectId, selectedContractorId, newMessage);
+      console.log('Message send result:', result);
       
-      if (result && result.id) {
+      if (result && result.id && result.id !== 'error') {
         // Add the new message to the state
         setMessages((prev) => ({
           ...prev,
@@ -139,11 +173,21 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to send message. Please try again.',
-        variant: 'destructive',
-      });
+      
+      // Check if the error indicates missing tables
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
+        setSetupNeeded(true);
+        setError("Messaging system needs to be set up. Please contact support.");
+      } else {
+        setError("Failed to send message. Please try again later.");
+        
+        toast({
+          title: 'Error',
+          description: 'Failed to send message. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setSendingMessage(false);
     }
@@ -174,6 +218,40 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
       <div className="flex items-center justify-center min-h-[300px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
+    );
+  }
+
+  if (setupNeeded) {
+    return (
+      <Alert variant="destructive" className="mb-6">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Messaging System Setup Required</AlertTitle>
+        <AlertDescription>
+          <p className="mb-2">The messaging system needs to be set up in your Supabase database.</p>
+          <p className="mb-4">Please contact the development team to set up the required database tables.</p>
+          <details className="text-sm">
+            <summary className="cursor-pointer font-medium">Technical Details</summary>
+            <p className="mt-2">The following tables need to be created:</p>
+            <ul className="list-disc pl-5 mt-1 space-y-1">
+              <li>messaging.messages</li>
+              <li>messaging.attachments</li>
+            </ul>
+            <p className="mt-2">Make sure the bids table has a project_id column that references your projects.</p>
+          </details>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (error && contractors.length === 0) {
+    return (
+      <Alert variant="default" className="mb-6">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>No Contractors Available</AlertTitle>
+        <AlertDescription>
+          {error}
+        </AlertDescription>
+      </Alert>
     );
   }
 
@@ -249,11 +327,11 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
             {selectedContractor ? (
               <div className="flex items-center">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg mr-2">
-                  {selectedContractor.avatar || '👤'}
+                  {selectedContractor?.avatar ?? '👤'}
                 </div>
                 <div>
-                  <CardTitle>{selectedContractor.name}</CardTitle>
-                  <div className="text-xs text-gray-500">{selectedContractor.company || 'Independent Contractor'}</div>
+                  <CardTitle>{selectedContractor?.name ?? ''}</CardTitle>
+                  <div className="text-xs text-gray-500">{selectedContractor?.company ?? 'Independent Contractor'}</div>
                 </div>
               </div>
             ) : (
@@ -261,6 +339,14 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
             )}
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto py-4 px-4 space-y-4">
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
             {!selectedContractor ? (
               <div className="h-full flex items-center justify-center text-gray-400">
                 Select a contractor to view messages
@@ -277,7 +363,7 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
                 >
                   {!message.isOwn && selectedContractor && (
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg mr-2 self-end">
-                      {selectedContractor.avatar || '👤'}
+                      {selectedContractor.avatar ?? '👤'}
                     </div>
                   )}
                   <div
