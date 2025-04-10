@@ -4,22 +4,58 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { BidCard } from '@/types/bidding';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BidCardService } from '@/services/bid-card-service';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { toast } from '@/components/ui/use-toast';
-import { Toaster } from '@/components/ui/toaster';
+import { Loader2 } from 'lucide-react';
+import EnhancedMessaging from '@/components/messaging/EnhancedMessaging';
 
 interface ProjectDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
-interface ExtendedBidCard extends BidCard {
+interface ExtendedBidCard {
+  id: string;
+  title: string;
+  description: string;
+  status: 'draft' | 'published' | 'archived' | 'active' | 'completed' | string;
+  creator_id: string;
+  created_at: string;
+  updated_at?: string;
+  job_type_id: string;
+  job_category_id: string;
+  job_size: string;
+  intention_type_id: string;
+  timeline_horizon_id?: string;
+  timeline_start?: string;
+  timeline_end?: string;
+  budget_min?: number;
+  budget_max?: number;
+  budget?: number;
+  zip_code: string;
+  city?: string;
+  state?: string;
+  location: {
+    address_line1: string;
+    city: string;
+    state: string;
+    country?: string;
+    zip_code: string;
+  };
+  special_requirements?: string;
+  guidance_for_bidders?: string;
+  group_bidding_enabled: boolean;
+  visibility: 'public' | 'private' | 'group';
+  max_contractor_messages?: number;
+  prohibit_negotiation?: boolean;
+  required_certifications?: string[];
+  bid_deadline?: string;
   job_categories?: {
     name: string;
     display_name: string;
@@ -45,23 +81,18 @@ interface ExtendedBidCard extends BidCard {
     size_bytes?: number;
     url?: string;
   }>;
-  budget?: number;
-  start_date?: string;
-  requirements?: string;
-  special_requirements?: string;
-  budget_min?: number;
-  budget_max?: number;
-  timeline_start?: string;
-  city?: string;
-  state?: string;
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
-  const id = params.id;
+  // Unwrap params using React.use()
+  const unwrappedParams = React.use(params);
+  const id = unwrappedParams.id;
+  
   const router = useRouter();
   const [bidCard, setBidCard] = useState<ExtendedBidCard | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [deleting, setDeleting] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<string>('details');
 
   useEffect(() => {
     async function fetchBidCard() {
@@ -69,36 +100,46 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
         setLoading(true);
         const response = await BidCardService.getBidCard(id);
         console.log("Bid card response:", response);
-        setBidCard(response.bidCard);
+        
+        if (response && response.bidCard) {
+          // Cast the response to ExtendedBidCard to ensure type compatibility
+          setBidCard(response.bidCard as ExtendedBidCard);
+        } else {
+          toast({
+            title: "Error",
+            description: "Could not load project details. Please try again.",
+            variant: "destructive",
+          });
+        }
       } catch (error) {
-        console.error('Error fetching bid card:', error);
+        console.error("Error fetching bid card:", error);
         toast({
-          title: 'Error',
-          description: 'Failed to load project details. Please try again.',
-          variant: 'destructive',
+          title: "Error",
+          description: "Could not load project details. Please try again.",
+          variant: "destructive",
         });
       } finally {
         setLoading(false);
       }
     }
-
-    if (id) {
-      fetchBidCard();
-    }
+    
+    fetchBidCard();
   }, [id]);
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this project?')) {
+    if (!bidCard) return;
+    
+    if (!confirm("Are you sure you want to delete this project? This action cannot be undone.")) {
       return;
     }
-
+    
     try {
       setDeleting(true);
       await BidCardService.deleteBidCard(id);
       
       toast({
-        title: 'Project deleted',
-        description: 'Your project has been successfully deleted.',
+        title: "Success",
+        description: "Project deleted successfully.",
       });
       
       router.push('/dashboard/homeowner/projects');
@@ -106,254 +147,218 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
       console.error('Error deleting bid card:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete the project. Please try again.',
+        description: 'Failed to delete project. Please try again.',
         variant: 'destructive',
       });
+    } finally {
       setDeleting(false);
     }
+  };
+
+  const handleEdit = () => {
+    if (!bidCard) return;
+    router.push(`/dashboard/homeowner/projects/${bidCard.id}/edit`);
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'published':
+        return 'bg-gray-200 text-gray-800';
+      case 'active':
         return 'bg-green-100 text-green-800';
       case 'archived':
-        return 'bg-gray-100 text-gray-800';
-      default:
+        return 'bg-yellow-100 text-yellow-800';
+      case 'completed':
         return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   if (loading) {
     return (
-      <div className="container mx-auto py-6 flex justify-center items-center h-64">
-        <div className="h-8 w-8 animate-spin text-gray-500" />
+      <div className="flex items-center justify-center min-h-[500px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
-
+  
   if (!bidCard) {
     return (
-      <div className="container mx-auto py-6">
-        <div className="mb-6">
-          <Link href="/dashboard/homeowner/projects">
-            <Button variant="outline">
-              Back to Projects
-            </Button>
-          </Link>
-        </div>
-        
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Project not found</h3>
-          <p className="text-gray-500 mb-4">
-            The project you're looking for doesn't exist or you don't have permission to view it.
-          </p>
-          <Link href="/dashboard/homeowner/projects">
-            <Button>Go to My Projects</Button>
-          </Link>
-        </div>
+      <div className="text-center py-12">
+        <h2 className="text-2xl font-bold mb-4">Project Not Found</h2>
+        <p className="text-gray-500 mb-6">The project you're looking for doesn't exist or you don't have permission to view it.</p>
+        <Button onClick={() => router.push('/dashboard/homeowner/projects')}>
+          Back to Projects
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="mb-6 flex justify-between items-center">
-        <Link href="/dashboard/homeowner/projects">
-          <Button variant="outline">
-            Back to Projects
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">{bidCard.title}</h1>
+          <div className="flex items-center gap-2 mt-1">
+            <Badge className={getStatusColor(bidCard.status)}>
+              {bidCard.status === 'active' ? 'Active' : bidCard.status}
+            </Badge>
+            <span className="text-sm text-gray-500">
+              Created {formatDate(bidCard.created_at)}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleEdit}>
+            Edit Project
           </Button>
-        </Link>
-        
-        <div className="flex space-x-2">
-          <Link href={`/dashboard/homeowner/projects/${bidCard.id}/edit`}>
-            <Button variant="outline">
-              Edit Project
-            </Button>
-          </Link>
-          
-          <Button 
-            variant="destructive" 
-            onClick={handleDelete}
-            disabled={deleting}
-          >
-            {deleting ? (
-              <div className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <></>
-            )}
+          <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
             Delete
           </Button>
         </div>
       </div>
       
-      <Card className="mb-6">
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-2xl">{bidCard.title}</CardTitle>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {bidCard.job_categories && (
-                  <Badge>
-                    {bidCard.job_categories.display_name || bidCard.job_categories.name}
-                  </Badge>
-                )}
-                {bidCard.job_types && (
-                  <Badge>
-                    {bidCard.job_types.display_name || bidCard.job_types.name}
-                  </Badge>
-                )}
-                <Badge className={getStatusColor(bidCard.status || 'draft')}>
-                  {bidCard.status ? bidCard.status.charAt(0).toUpperCase() + bidCard.status.slice(1) : 'Draft'}
-                </Badge>
-              </div>
-            </div>
-            
-            <div className="text-right text-sm text-gray-500">
-              <p>Created: {bidCard.created_at ? new Date(bidCard.created_at).toLocaleDateString() : 'Unknown'}</p>
-              {bidCard.updated_at && bidCard.updated_at !== bidCard.created_at && (
-                <p>Updated: {new Date(bidCard.updated_at).toLocaleDateString()}</p>
-              )}
-            </div>
-          </div>
-        </CardHeader>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6">
+          <TabsTrigger value="details">Project Details</TabsTrigger>
+          <TabsTrigger value="messaging">Messaging</TabsTrigger>
+        </TabsList>
         
-        <CardContent>
+        <TabsContent value="details">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="col-span-2">
-              <h3 className="text-lg font-medium mb-2">Description</h3>
-              <p className="text-gray-700 whitespace-pre-wrap mb-6">
-                {bidCard.description || 'No description provided.'}
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="flex items-start">
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle>Project Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <h4 className="font-medium">Location</h4>
-                    <p className="text-gray-700">
-                      {bidCard.location && typeof bidCard.location === 'object' && 'address_line1' in bidCard.location 
-                        ? `${bidCard.location.address_line1}, ${bidCard.location.city}, ${bidCard.location.state}`
-                        : bidCard.location && typeof bidCard.location === 'string'
-                          ? bidCard.location
-                          : bidCard.city && bidCard.state
-                            ? `${bidCard.city}, ${bidCard.state}`
-                            : 'Not specified'}
-                    </p>
+                    <h3 className="text-sm font-medium text-gray-500">Project Type</h3>
+                    <p>{bidCard.job_types?.display_name || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Category</h3>
+                    <p>{bidCard.job_categories?.display_name || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Size</h3>
+                    <p className="capitalize">{bidCard.job_size || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Intention</h3>
+                    <p>{bidCard.project_intention_types?.display_name || 'Not specified'}</p>
                   </div>
                 </div>
                 
-                <div className="flex items-start">
-                  <div>
-                    <h4 className="font-medium">Budget</h4>
-                    <p className="text-gray-700">
-                      {bidCard.budget_min || bidCard.budget_max 
-                        ? `$${bidCard.budget_min?.toLocaleString() || 0} - $${bidCard.budget_max?.toLocaleString() || 0}` 
-                        : (bidCard.budget ? `$${bidCard.budget.toLocaleString()}` : 'Not specified')}
-                    </p>
-                  </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-1">Description</h3>
+                  <p className="whitespace-pre-line">{bidCard.description || 'No description provided.'}</p>
                 </div>
                 
-                <div className="flex items-start">
+                {bidCard.special_requirements && (
                   <div>
-                    <h4 className="font-medium">Start Date</h4>
-                    <p className="text-gray-700">
-                      {bidCard.timeline_start 
-                        ? new Date(bidCard.timeline_start).toLocaleDateString() 
-                        : (bidCard.start_date ? new Date(bidCard.start_date).toLocaleDateString() : 'Not specified')}
-                    </p>
+                    <h3 className="text-sm font-medium text-gray-500 mb-1">Special Requirements</h3>
+                    <p className="whitespace-pre-line">{bidCard.special_requirements}</p>
                   </div>
-                </div>
-                
-                <div className="flex items-start">
-                  <div>
-                    <h4 className="font-medium">Timeline</h4>
-                    <p className="text-gray-700">
-                      {bidCard.timeline_horizons 
-                        ? (bidCard.timeline_horizons.display_name || bidCard.timeline_horizons.name) 
-                        : (bidCard.timeline_horizon_id ? bidCard.timeline_horizon_id : 'Not specified')}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              {(bidCard.requirements || bidCard.special_requirements) && (
-                <div className="mb-6">
-                  <h3 className="text-lg font-medium mb-2">Special Requirements</h3>
-                  <p className="text-gray-700 whitespace-pre-wrap">
-                    {bidCard.requirements || bidCard.special_requirements}
-                  </p>
-                </div>
-              )}
-            </div>
+                )}
+              </CardContent>
+            </Card>
             
-            <div>
-              <h3 className="text-lg font-medium mb-3">Project Images & Documents</h3>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Budget</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {bidCard.budget_min && bidCard.budget_max ? (
+                    <div className="text-xl font-bold">
+                      {formatCurrency(bidCard.budget_min)} - {formatCurrency(bidCard.budget_max)}
+                    </div>
+                  ) : bidCard.budget ? (
+                    <div className="text-xl font-bold">
+                      {formatCurrency(bidCard.budget)}
+                    </div>
+                  ) : (
+                    <p>No budget specified</p>
+                  )}
+                </CardContent>
+              </Card>
               
-              {!bidCard.media || bidCard.media.length === 0 ? (
-                <p className="text-gray-500 italic">No images or documents attached</p>
-              ) : (
-                <div className="space-y-4">
-                  {bidCard.media
-                    .filter(item => item.media_type === 'photo' && item.url)
-                    .map((item, index) => (
-                      <div key={item.id || index} className="relative h-40 rounded-md overflow-hidden">
-                        <Image 
-                          src={item.url!}
-                          alt={item.file_name || `Project image ${index + 1}`}
-                          fill
-                          style={{ objectFit: 'cover' }}
-                        />
-                      </div>
-                    ))}
-                  
-                  {bidCard.media
-                    .filter(item => item.media_type !== 'photo' && item.url)
-                    .map((item, index) => (
-                      <div key={item.id || index} className="flex items-center p-3 border rounded-md">
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate font-medium">{item.file_name}</p>
-                          <p className="text-xs text-gray-500">
-                            {(item.size_bytes && item.size_bytes > 1024) 
-                              ? `${Math.round(item.size_bytes / 1024)} KB` 
-                              : `${item.size_bytes || 0} bytes`}
-                          </p>
-                        </div>
-                        <a 
-                          href={item.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="ml-2 text-sm text-blue-600 hover:underline"
-                        >
-                          View
-                        </a>
-                      </div>
-                    ))}
-                </div>
-              )}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Timeline</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500">Timeframe</h3>
+                    <p>{bidCard.timeline_horizons?.display_name || 'Not specified'}</p>
+                  </div>
+                  {bidCard.timeline_start && (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500">Start Date</h3>
+                      <p>{formatDate(bidCard.timeline_start)}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Location</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {bidCard.city && bidCard.state ? (
+                    <p>{bidCard.city}, {bidCard.state}</p>
+                  ) : (
+                    <p>Location not specified</p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
-        </CardContent>
-      </Card>
-      
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Bids & Contractor Responses</CardTitle>
-          <CardDescription>View and manage contractor responses to your project</CardDescription>
-        </CardHeader>
+          
+          {bidCard.media && bidCard.media.length > 0 && (
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Project Media</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {bidCard.media.map((item, index) => (
+                    <div key={item.id || index} className="relative aspect-square rounded-md overflow-hidden border">
+                      {item.media_type === 'photo' && item.url ? (
+                        <Image
+                          src={item.url}
+                          alt={`Project image ${index + 1}`}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full bg-gray-100 text-gray-400">
+                          No preview
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
         
-        <CardContent>
-          <div className="text-center py-8">
-            <p className="text-gray-500 mb-4">No bids received yet</p>
-            {bidCard.status !== 'published' && (
-              <Button>Publish Project to Receive Bids</Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-      
-      <Toaster />
+        <TabsContent value="messaging">
+          <Card>
+            <CardHeader>
+              <CardTitle>Project Messages</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <EnhancedMessaging projectId={bidCard.id} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
