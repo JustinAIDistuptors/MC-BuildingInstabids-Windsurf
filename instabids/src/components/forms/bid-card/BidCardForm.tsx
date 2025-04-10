@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
+import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -48,7 +49,11 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 // Success screen with finding contractors animation
-const SuccessScreen = ({ bidData, onViewBidCard }: { bidData: FormValues, onViewBidCard: () => void }) => (
+const SuccessScreen = ({ bidData, onViewBidCard, onBackToDashboard }: { 
+  bidData: FormValues, 
+  onViewBidCard: () => void,
+  onBackToDashboard: () => void
+}) => (
   <div className="text-center py-10 space-y-8">
     <div className="mb-8">
       <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -105,22 +110,37 @@ const SuccessScreen = ({ bidData, onViewBidCard }: { bidData: FormValues, onView
         </div>
       </div>
       
-      <Button 
-        onClick={onViewBidCard} 
-        className="bg-blue-600 hover:bg-blue-700 px-8 py-3 text-lg font-medium shadow-md"
-      >
-        View Your Project
-      </Button>
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <Button 
+          onClick={onViewBidCard} 
+          className="bg-blue-600 hover:bg-blue-700 px-8 py-3 text-lg font-medium shadow-md"
+        >
+          View Your Project
+        </Button>
+        
+        <Button 
+          onClick={onBackToDashboard} 
+          variant="outline"
+          className="px-8 py-3 text-lg font-medium shadow-sm"
+        >
+          Go to Dashboard
+        </Button>
+      </div>
     </div>
   </div>
 );
 
 // Bid card view component
-const BidCardView = ({ bidData, mediaFiles, onBack }: { bidData: FormValues, mediaFiles: File[], onBack: () => void }) => (
+const BidCardView = ({ bidData, mediaFiles, onBack, onBackToDashboard }: { 
+  bidData: FormValues, 
+  mediaFiles: File[], 
+  onBack: () => void,
+  onBackToDashboard: () => void
+}) => (
   <div className="space-y-6">
     <div className="flex justify-between items-center">
       <h2 className="text-2xl font-bold">Your Project</h2>
-      <Button variant="outline" onClick={onBack}>Back to Dashboard</Button>
+      <Button variant="outline" onClick={onBackToDashboard}>Back to Dashboard</Button>
     </div>
     
     <Card className="p-6">
@@ -227,7 +247,12 @@ const BidCardView = ({ bidData, mediaFiles, onBack }: { bidData: FormValues, med
         </div>
         
         <div className="pt-4 border-t">
-          <Button className="w-full">Contact Support</Button>
+          <Button 
+            className="w-full bg-blue-600 hover:bg-blue-700" 
+            onClick={onBackToDashboard}
+          >
+            Return to Dashboard
+          </Button>
         </div>
       </div>
     </Card>
@@ -241,6 +266,7 @@ export default function BidCardForm() {
   const [showBidCard, setShowBidCard] = useState(false);
   const [submittedData, setSubmittedData] = useState<FormValues | null>(null);
   const [formKey, setFormKey] = useState(Date.now()); // Used to force re-render the form
+  const router = useRouter();
   
   // Define form steps
   const FORM_STEPS = [
@@ -319,7 +345,8 @@ export default function BidCardForm() {
 
   // Go back to success screen
   const handleBackToDashboard = () => {
-    setShowBidCard(false);
+    // Navigate to the dashboard
+    router.push('/dashboard/homeowner/projects');
   };
 
   // Render the current step - PROPERLY INTEGRATING ALL STEPS
@@ -394,7 +421,8 @@ export default function BidCardForm() {
           <BidCardView 
             bidData={submittedData} 
             mediaFiles={mediaFiles} 
-            onBack={handleBackToDashboard} 
+            onBack={() => setShowBidCard(false)} 
+            onBackToDashboard={handleBackToDashboard}
           />
         </Card>
       );
@@ -405,6 +433,7 @@ export default function BidCardForm() {
         <SuccessScreen 
           bidData={submittedData} 
           onViewBidCard={handleViewBidCard} 
+          onBackToDashboard={handleBackToDashboard}
         />
       </Card>
     );

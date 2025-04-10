@@ -9,6 +9,173 @@ import { toast } from '@/components/ui/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import { Card } from '@/components/ui/card';
 
+// Mock data for projects
+const MOCK_PROJECTS = [
+  {
+    id: '1',
+    title: 'Kitchen Renovation',
+    description: 'Complete kitchen remodel including new cabinets, countertops, and appliances.',
+    status: 'active',
+    bids: 3,
+    budget: '$15,000 - $25,000',
+    timeline: 'May 2023 - July 2023',
+    location: 'Austin, TX',
+    type: 'one-time',
+    size: 'large',
+    hasMedia: true,
+    createdAt: '2023-04-15T10:30:00Z',
+  },
+  {
+    id: '2',
+    title: 'Bathroom Remodel',
+    description: 'Update master bathroom with new shower, vanity, and fixtures.',
+    status: 'active',
+    bids: 2,
+    budget: '$8,000 - $12,000',
+    timeline: 'June 2023 - July 2023',
+    location: 'Austin, TX',
+    type: 'one-time',
+    size: 'medium',
+    hasMedia: false,
+    createdAt: '2023-04-20T14:45:00Z',
+  },
+  {
+    id: '3',
+    title: 'Lawn Maintenance',
+    description: 'Regular lawn mowing, edging, and garden maintenance.',
+    status: 'completed',
+    bids: 5,
+    budget: '$150 - $200 per month',
+    timeline: 'Ongoing',
+    location: 'Austin, TX',
+    type: 'continual',
+    size: 'small',
+    hasMedia: true,
+    createdAt: '2023-03-10T09:15:00Z',
+  },
+  {
+    id: '4',
+    title: 'Fence Installation',
+    description: 'Install new wooden privacy fence around backyard.',
+    status: 'completed',
+    bids: 4,
+    budget: '$3,000 - $5,000',
+    timeline: 'April 2023',
+    location: 'Austin, TX',
+    type: 'one-time',
+    size: 'medium',
+    hasMedia: false,
+    createdAt: '2023-02-28T11:20:00Z',
+  },
+  {
+    id: '5',
+    title: 'Roof Repair',
+    description: 'Fix leaking roof and replace damaged shingles.',
+    status: 'archived',
+    bids: 0,
+    budget: '$1,000 - $3,000',
+    timeline: 'March 2023',
+    location: 'Austin, TX',
+    type: 'repair',
+    size: 'small',
+    hasMedia: true,
+    createdAt: '2023-02-15T16:30:00Z',
+  },
+];
+
+// Project card component
+const ProjectCard = ({ project, onViewDetails }: { project: any, onViewDetails: (project: any) => void }) => {
+  return (
+    <Card className="h-full transition-all duration-200 hover:shadow-md">
+      <div className="p-5">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h3 className="text-lg font-semibold">{project.title}</h3>
+            <div className="text-sm text-gray-500">{project.type} project</div>
+          </div>
+          <div
+            className={`text-xs font-medium px-2.5 py-0.5 rounded ${
+              project.status === 'active' ? 'bg-green-100 text-green-800' :
+              project.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+              'bg-gray-100 text-gray-800'
+            }`}
+          >
+            {project.status === 'active' ? 'Active' :
+             project.status === 'completed' ? 'Completed' : 'Archived'}
+          </div>
+        </div>
+        
+        <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
+        
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-4">
+          <div>
+            <span className="text-gray-500">Budget</span>
+            <p className="font-medium">{project.budget}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Timeline</span>
+            <p className="font-medium">{project.timeline}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Location</span>
+            <p className="font-medium">{project.location}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Size</span>
+            <p className="font-medium capitalize">{project.size}</p>
+          </div>
+          {project.hasMedia && (
+            <div className="col-span-2 mt-1">
+              <div className="flex items-center text-blue-600">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="text-sm">Photos</span>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <div className="flex justify-between pt-4 border-t border-gray-200">
+          <Button 
+            variant="outline" 
+            onClick={() => onViewDetails(project)}
+            className="px-3 py-1 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors"
+          >
+            View Details
+          </Button>
+          <Button 
+            variant="ghost" 
+            className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1 text-sm transition-colors"
+          >
+            Delete
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+// Empty state component
+const EmptyState = ({ onCreateProject }: { onCreateProject: () => void }) => (
+  <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+    <div className="mb-4">
+      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    </div>
+    <h3 className="text-lg font-medium text-gray-900 mb-2">No projects found</h3>
+    <p className="text-gray-500 mb-6 max-w-md mx-auto">
+      Get started by creating a new project.
+    </p>
+    <div className="mt-6">
+      <Button onClick={onCreateProject} className="bg-blue-600 hover:bg-blue-700">
+        Create a Project
+      </Button>
+    </div>
+  </div>
+);
+
 export default function ProjectsPage() {
   const [bidCards, setBidCards] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -293,84 +460,15 @@ export default function ProjectsPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
           ) : filteredProjects.length === 0 ? (
-            <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="mb-4">
-                <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900">No projects found</h3>
-              <p className="mt-1 text-gray-500">Get started by creating a new project.</p>
-              <div className="mt-6">
-                <Button 
-                  onClick={handleCreateNewProject}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Create a Project
-                </Button>
-              </div>
-            </div>
+            <EmptyState onCreateProject={handleCreateNewProject} />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProjects.map(project => (
-                <Card key={project.id} className="overflow-hidden border border-gray-200 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
-                  <div className="p-5">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1 truncate">{project.title}</h3>
-                        {getStatusBadge(project)}
-                      </div>
-                      {project.hasMedia && (
-                        <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded flex items-center">
-                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                          </svg>
-                          Photos
-                        </div>
-                      )}
-                    </div>
-                    
-                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
-                    
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-4">
-                      <div>
-                        <span className="text-gray-500">Location:</span>
-                        <p className="font-medium">{project.location?.city || 'Not specified'}, {project.location?.state || ''}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Budget:</span>
-                        <p className="font-medium">
-                          {formatCurrency(project.budget_min)} - {formatCurrency(project.budget_max)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Project Size:</span>
-                        <p className="font-medium capitalize">{project.job_size || 'Not specified'}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Group Bidding:</span>
-                        <p className="font-medium">{project.group_bidding_enabled ? 'Enabled' : 'Disabled'}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between pt-4 border-t border-gray-200">
-                      <Button 
-                        variant="outline" 
-                        onClick={() => handleViewProject(project)}
-                        className="px-3 py-1 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                      >
-                        View Details
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1 text-sm transition-colors"
-                        onClick={() => handleDelete(project.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
+                <ProjectCard 
+                  key={project.id} 
+                  project={project} 
+                  onViewDetails={handleViewProject} 
+                />
               ))}
             </div>
           )}

@@ -122,7 +122,7 @@ const BidCardView = ({ bidData, mediaFiles, onBack }: {
         </div>
         
         <div className="pt-4 border-t">
-          <Button className="w-full" onClick={onBack}>Return to Dashboard</Button>
+          <Button className="w-full bg-blue-600 hover:bg-blue-700" onClick={onBack}>Return to Dashboard</Button>
         </div>
       </div>
     </Card>
@@ -160,6 +160,7 @@ export default function BidCardPage() {
   }, [searchParams]);
   
   const handleBackToDashboard = () => {
+    // Directly navigate to the dashboard page
     router.push('/dashboard/homeowner/projects');
   };
   
@@ -179,5 +180,9 @@ export default function BidCardPage() {
   }
   
   // Otherwise show the regular BidCardForm
-  return <BidCardForm />;
+  return (
+    <div className="container mx-auto py-8">
+      <BidCardForm />
+    </div>
+  );
 }
