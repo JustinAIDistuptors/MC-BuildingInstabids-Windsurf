@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from '@/components/ui/use-toast';
@@ -12,6 +13,7 @@ export default function ProjectsPage() {
   const [bidCards, setBidCards] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState('active');
+  const router = useRouter();
 
   // Fetch bid cards from localStorage when the component mounts
   useEffect(() => {
@@ -174,12 +176,17 @@ export default function ProjectsPage() {
     }
   };
 
+  // Handle creating a new project
+  const handleCreateNewProject = () => {
+    router.push('/bid-card');
+  };
+
   // Handle viewing a project
   const handleViewProject = (project: any) => {
     // If this is the last submitted project with media, show the bid card view
     if (project.hasMedia) {
       // Navigate to the bid card form with a query parameter to show the view
-      window.location.href = '/bid-card?view=true';
+      router.push('/bid-card?view=true');
     } else {
       toast({
         title: 'Project Details',
@@ -247,21 +254,37 @@ export default function ProjectsPage() {
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">My Projects</h1>
-        <Link href="/bid-card">
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-            </svg>
-            Create New Project
-          </Button>
-        </Link>
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
+          onClick={handleCreateNewProject}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+          </svg>
+          Create New Project
+        </Button>
       </div>
 
       <Tabs defaultValue="active" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="active">Active Projects</TabsTrigger>
-          <TabsTrigger value="drafts">Drafts</TabsTrigger>
-          <TabsTrigger value="completed">Completed</TabsTrigger>
+        <TabsList className="mb-6 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger 
+            value="active" 
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
+          >
+            Active Projects
+          </TabsTrigger>
+          <TabsTrigger 
+            value="drafts"
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
+          >
+            Drafts
+          </TabsTrigger>
+          <TabsTrigger 
+            value="completed"
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
+          >
+            Completed
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
@@ -270,7 +293,7 @@ export default function ProjectsPage() {
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
           ) : filteredProjects.length === 0 ? (
-            <div className="text-center py-12">
+            <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
               <div className="mb-4">
                 <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -279,15 +302,18 @@ export default function ProjectsPage() {
               <h3 className="text-lg font-medium text-gray-900">No projects found</h3>
               <p className="mt-1 text-gray-500">Get started by creating a new project.</p>
               <div className="mt-6">
-                <Link href="/bid-card">
-                  <Button>Create a Project</Button>
-                </Link>
+                <Button 
+                  onClick={handleCreateNewProject}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Create a Project
+                </Button>
               </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProjects.map(project => (
-                <Card key={project.id} className="overflow-hidden border border-gray-200 rounded-lg shadow-sm">
+                <Card key={project.id} className="overflow-hidden border border-gray-200 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300">
                   <div className="p-5">
                     <div className="flex justify-between items-start mb-4">
                       <div>
@@ -295,8 +321,11 @@ export default function ProjectsPage() {
                         {getStatusBadge(project)}
                       </div>
                       {project.hasMedia && (
-                        <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-                          Has Photos
+                        <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded flex items-center">
+                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                          </svg>
+                          Photos
                         </div>
                       )}
                     </div>
@@ -328,13 +357,13 @@ export default function ProjectsPage() {
                       <Button 
                         variant="outline" 
                         onClick={() => handleViewProject(project)}
-                        className="px-3 py-1 text-sm"
+                        className="px-3 py-1 text-sm hover:bg-blue-50 hover:text-blue-700 transition-colors"
                       >
                         View Details
                       </Button>
                       <Button 
                         variant="ghost" 
-                        className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1 text-sm"
+                        className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-1 text-sm transition-colors"
                         onClick={() => handleDelete(project.id)}
                       >
                         Delete
