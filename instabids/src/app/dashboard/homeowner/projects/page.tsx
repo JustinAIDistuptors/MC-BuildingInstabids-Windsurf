@@ -3,20 +3,19 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createClient } from '@supabase/supabase-js';
 import { toast } from '@/components/ui/use-toast';
 import Link from 'next/link';
-import Image from 'next/image';
+import ProjectCard from '@/components/projects/ProjectCard';
 
-// Initialize Supabase client directly
+// Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
-// Simple Project type
+// Project type definition
 interface Project {
   id: string;
   title: string;
@@ -28,6 +27,13 @@ interface Project {
   type?: string;
   created_at: string;
   updated_at?: string;
+  bid_status?: string;
+  media: {
+    id: string;
+    media_url: string;
+    media_type: string;
+    file_name: string;
+  }[];
 }
 
 export default function ProjectsPage() {
@@ -36,26 +42,78 @@ export default function ProjectsPage() {
   const [activeTab, setActiveTab] = useState('active');
   const router = useRouter();
 
-  // Load projects directly from Supabase
+  // Load projects with their media - EXACTLY MATCHING DASHBOARD IMPLEMENTATION
   useEffect(() => {
     async function loadProjects() {
       setLoading(true);
       try {
         console.log('Loading projects from Supabase...');
         
-        const { data, error } = await supabase
+        // Get all projects - USING THE EXACT SAME QUERY AS DASHBOARD
+        const { data: projectsData, error: projectsError } = await supabase
           .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (projectsError) {
+          console.error('Error loading projects:', projectsError);
+          toast({
+            title: 'Error',
+            description: 'Failed to load projects. Please try again.',
+            variant: 'destructive',
+          });
+          setProjects([]);
+          return;
+        }
+        
+        console.log('Projects loaded:', JSON.stringify(projectsData, null, 2));
+        
+        if (!projectsData || projectsData.length === 0) {
+          console.log('No projects found');
+          setProjects([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Get media for all projects in a single query
+        const { data: allMediaData, error: mediaError } = await supabase
+          .from('project_media')
           .select('*');
         
-        if (error) {
-          console.error('Error loading projects from Supabase:', error);
-          setProjects([]);
-        } else {
-          console.log('Projects loaded from Supabase:', data);
-          setProjects(data || []);
+        if (mediaError) {
+          console.error('Error loading media:', mediaError);
+          // Continue with projects but without media
+          setProjects(projectsData.map(project => ({ ...project, media: [] })));
+          return;
         }
+        
+        console.log('Media loaded:', allMediaData);
+        
+        // Map media to their respective projects
+        const projectsWithMedia = projectsData.map(project => {
+          const projectMedia = allMediaData?.filter(
+            media => media.project_id === project.id
+          ) || [];
+          
+          // Add hasMedia flag for ProjectCard component
+          return {
+            ...project,
+            media: projectMedia,
+            hasMedia: projectMedia.length > 0,
+            // Set imageUrl for the ProjectCard component
+            imageUrl: projectMedia.length > 0 ? projectMedia[0].media_url : undefined
+          };
+        });
+        
+        console.log('Projects with media:', projectsWithMedia);
+        setProjects(projectsWithMedia);
       } catch (error) {
-        console.error('Error loading projects:', error);
+        console.error('Unexpected error:', error);
+        toast({
+          title: 'Error',
+          description: 'An unexpected error occurred while loading projects.',
+          variant: 'destructive',
+        });
         setProjects([]);
       } finally {
         setLoading(false);
@@ -70,7 +128,7 @@ export default function ProjectsPage() {
     router.push('/dashboard/homeowner/new-project');
   };
 
-  // Delete a project directly from Supabase
+  // Delete a project
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this project?')) {
       return;
@@ -79,33 +137,50 @@ export default function ProjectsPage() {
     try {
       setLoading(true);
       
-      // Delete from Supabase
+      // First, delete all media associated with this project
+      const { data: mediaData, error: mediaError } = await supabase
+        .from('project_media')
+        .select('*')
+        .eq('project_id', id);
+      
+      if (!mediaError && mediaData) {
+        // Delete each media item from storage
+        for (const media of mediaData) {
+          const fileName = media.file_name;
+          await supabase.storage
+            .from('projectmedia')
+            .remove([`${id}/${fileName}`]);
+        }
+        
+        // Delete media records from database
+        await supabase
+          .from('project_media')
+          .delete()
+          .eq('project_id', id);
+      }
+      
+      // Delete the project
       const { error } = await supabase
         .from('projects')
         .delete()
         .eq('id', id);
       
       if (error) {
-        console.error('Error deleting project from Supabase:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to delete project. Please try again.',
-          variant: 'destructive',
-        });
-      } else {
-        // Update local state
-        setProjects(projects.filter(project => project.id !== id));
-        
-        toast({
-          title: 'Success',
-          description: 'Project deleted successfully.',
-        });
+        throw error;
       }
+      
+      // Update the projects list
+      setProjects(projects.filter(project => project.id !== id));
+      
+      toast({
+        title: 'Success',
+        description: 'Project deleted successfully.',
+      });
     } catch (error) {
       console.error('Error deleting project:', error);
       toast({
         title: 'Error',
-        description: 'An unexpected error occurred.',
+        description: 'Failed to delete project. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -113,7 +188,7 @@ export default function ProjectsPage() {
     }
   };
 
-  // Clear all projects
+  // Clear all projects (for testing)
   const handleClearAll = async () => {
     if (!window.confirm('Are you sure you want to delete ALL projects? This cannot be undone.')) {
       return;
@@ -122,33 +197,51 @@ export default function ProjectsPage() {
     try {
       setLoading(true);
       
-      // Delete all projects from Supabase
+      // Delete all project media first
+      for (const project of projects) {
+        const { data: mediaData } = await supabase
+          .from('project_media')
+          .select('*')
+          .eq('project_id', project.id);
+        
+        if (mediaData && mediaData.length > 0) {
+          // Delete media from storage
+          for (const media of mediaData) {
+            const fileName = media.file_name;
+            await supabase.storage
+              .from('projectmedia')
+              .remove([`${project.id}/${fileName}`]);
+          }
+          
+          // Delete media records
+          await supabase
+            .from('project_media')
+            .delete()
+            .eq('project_id', project.id);
+        }
+      }
+      
+      // Delete all projects
       const { error } = await supabase
         .from('projects')
         .delete()
-        .gte('id', '0'); // This will match all IDs
+        .neq('id', '0'); // Delete all projects
       
       if (error) {
-        console.error('Error clearing all projects from Supabase:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to clear projects. Please try again.',
-          variant: 'destructive',
-        });
-      } else {
-        // Update local state
-        setProjects([]);
-        
-        toast({
-          title: 'Success',
-          description: 'All projects cleared successfully.',
-        });
+        throw error;
       }
+      
+      setProjects([]);
+      
+      toast({
+        title: 'Success',
+        description: 'All projects deleted successfully.',
+      });
     } catch (error) {
       console.error('Error clearing projects:', error);
       toast({
         title: 'Error',
-        description: 'An unexpected error occurred.',
+        description: 'Failed to clear projects. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -156,21 +249,18 @@ export default function ProjectsPage() {
     }
   };
 
-  // Format budget for display
-  const formatBudget = (min?: number, max?: number) => {
-    if (!min && !max) return 'Not specified';
-    if (min && max) return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
-    if (min) return `$${min.toLocaleString()}+`;
-    if (max) return `Up to $${max.toLocaleString()}`;
-    return 'Not specified';
-  };
-
-  // Filter projects based on active tab
+  // Filter projects based on active tab - EXACTLY MATCHING DASHBOARD LOGIC
   const filteredProjects = projects.filter(project => {
-    if (activeTab === 'active') return project.status === 'active' || project.status === 'accepting_bids';
+    if (activeTab === 'active') {
+      // Match any status that could be considered "active"
+      return project.status === 'active' || 
+             project.status === 'accepting_bids' || 
+             project.status === 'published' ||
+             project.bid_status === 'accepting_bids';
+    }
     if (activeTab === 'drafts') return project.status === 'draft';
     if (activeTab === 'completed') return project.status === 'completed';
-    return true;
+    return true; // All tab
   });
 
   return (
@@ -206,66 +296,27 @@ export default function ProjectsPage() {
           ) : filteredProjects.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredProjects.map(project => (
-                <Card key={project.id} className="overflow-hidden">
-                  <div className="relative h-40 bg-gray-200">
-                    <Image
-                      src="/placeholder-project.jpg"
-                      alt={project.title}
-                      fill
-                      style={{ objectFit: 'cover' }}
-                    />
-                    <div className="absolute top-2 left-2">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {project.status}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <CardHeader>
-                    <CardTitle>{project.title}</CardTitle>
-                    <p className="text-sm text-gray-500 line-clamp-2">
-                      {project.description || 'No description provided'}
-                    </p>
-                  </CardHeader>
-                  
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div>
-                        <div className="text-gray-500 text-xs">Budget</div>
-                        <div>{formatBudget(project.budget_min, project.budget_max)}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-xs">Location</div>
-                        <div>{project.location || 'Not specified'}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-500 text-xs">Type</div>
-                        <div>{project.type || 'Not specified'}</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                  
-                  <CardFooter className="flex justify-between">
-                    <Button variant="outline" asChild>
-                      <Link href={`/dashboard/homeowner/projects/${project.id}`}>
-                        View Details
-                      </Link>
-                    </Button>
-                    <Button 
-                      variant="destructive" 
-                      onClick={() => handleDelete(project.id)}
-                    >
-                      Delete
-                    </Button>
-                  </CardFooter>
-                </Card>
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onDelete={handleDelete}
+                  linkToDetails={true}
+                  imageUrl={project.imageUrl}
+                />
               ))}
             </div>
           ) : (
             <div className="text-center py-12 bg-gray-50 rounded-lg">
               <h3 className="text-lg font-medium text-gray-900 mb-2">No projects found</h3>
-              <p className="text-gray-500 mb-6">Get started by creating a new project.</p>
-              <Button onClick={handleCreateProject}>Create Your First Project</Button>
+              <p className="text-gray-500 mb-4">
+                {activeTab === 'active' ? "You don't have any active projects yet." :
+                 activeTab === 'drafts' ? "You don't have any draft projects." :
+                 activeTab === 'completed' ? "You don't have any completed projects." :
+                 "You don't have any projects yet."}
+              </p>
+              <Button onClick={handleCreateProject}>
+                Create Your First Project
+              </Button>
             </div>
           )}
         </TabsContent>

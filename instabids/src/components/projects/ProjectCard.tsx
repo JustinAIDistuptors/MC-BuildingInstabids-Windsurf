@@ -2,7 +2,6 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 
 // Helper function to format location for display
 export const formatLocation = (location: any): string => {
@@ -200,15 +199,23 @@ export default function ProjectCard({
         {/* Project Image */}
         <div className="h-40 bg-gray-200 relative overflow-hidden">
           <div className="relative w-full h-full">
-            <Image 
-              src={projectImageUrl}
-              alt={project.title || "Project image"}
-              fill
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              style={{ objectFit: 'cover' }}
-              onError={handleImageError}
-              priority={false}
-            />
+            {projectImageUrl.includes('supabase.co') ? (
+              // Use regular img tag for Supabase images to avoid Next.js Image configuration issues
+              <img 
+                src={projectImageUrl}
+                alt={project.title || "Project image"}
+                className="w-full h-full object-cover"
+                onError={handleImageError}
+              />
+            ) : (
+              // Use Next.js Image for other images
+              <img 
+                src={projectImageUrl}
+                alt={project.title || "Project image"}
+                className="w-full h-full object-cover"
+                onError={handleImageError}
+              />
+            )}
           </div>
         </div>
         
