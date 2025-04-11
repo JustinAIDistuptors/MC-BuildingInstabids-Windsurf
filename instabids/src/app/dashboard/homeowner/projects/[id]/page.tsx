@@ -81,6 +81,10 @@ interface ExtendedBidCard {
     size_bytes?: number;
     url?: string;
   }>;
+  type?: string;
+  service_type?: string;
+  square_footage?: number;
+  timeline?: string;
 }
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
@@ -175,6 +179,113 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     }
   };
 
+  const formatProjectType = (type?: string): string => {
+    if (!type) return '';
+    
+    const typeMap: Record<string, string> = {
+      'one-time': 'One-Time Project',
+      'one_time': 'One-Time Project',
+      'continual': 'Continual Service',
+      'repair': 'Repair Service',
+      'handyman': 'Handyman Service',
+      'labor': 'Labor Only',
+      'multi-step': 'Multi-Step Project'
+    };
+    
+    const normalizedType = type.toLowerCase().replace(/[_-]/g, '-');
+    return typeMap[normalizedType] || type.replace(/[_-]/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
+  const getActualJobCategory = (options: {
+    job_category_id?: string;
+    service_type?: string;
+    job_type_id?: string;
+    type?: string;
+  }): string => {
+    const { job_category_id, service_type, job_type_id, type } = options;
+    
+    // Hard-coded job categories based on job_category_id
+    const jobCategoryMap: Record<string, string> = {
+      // Specific job categories
+      'roof-install': 'Roofing',
+      'fence-building': 'Fencing',
+      'driveway-paving': 'Paving',
+      'deck-construction': 'Decking',
+      'painting-exterior': 'Painting',
+      'plumbing-repair': 'Plumbing',
+      'electrical-repair': 'Electrical',
+      'roof-repair': 'Roofing',
+      'bathroom-remodel': 'Bathroom',
+      
+      // Project types mapped to categories
+      'one-time': 'General Contracting',
+      'one_time': 'General Contracting',
+      'continual': 'Maintenance Services',
+      'repair': 'Repair Services',
+      'handyman': 'Handyman Services',
+      'labor': 'Labor Services',
+      'multi-step': 'Construction'
+    };
+    
+    // Check each field in order of priority
+    if (job_category_id) {
+      const normalizedCategoryId = job_category_id.toLowerCase().replace(/[_-]/g, '-');
+      if (jobCategoryMap[normalizedCategoryId]) {
+        return jobCategoryMap[normalizedCategoryId];
+      }
+      
+      // Format the job_category_id if not in our map
+      return job_category_id.replace(/[_-]/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+    
+    if (service_type) {
+      const normalizedServiceType = service_type.toLowerCase().replace(/[_-]/g, '-');
+      if (jobCategoryMap[normalizedServiceType]) {
+        return jobCategoryMap[normalizedServiceType];
+      }
+    }
+    
+    if (job_type_id) {
+      const normalizedJobTypeId = job_type_id.toLowerCase().replace(/[_-]/g, '-');
+      if (jobCategoryMap[normalizedJobTypeId]) {
+        return jobCategoryMap[normalizedJobTypeId];
+      }
+    }
+    
+    if (type) {
+      const normalizedType = type.toLowerCase().replace(/[_-]/g, '-');
+      if (jobCategoryMap[normalizedType]) {
+        return jobCategoryMap[normalizedType];
+      }
+    }
+    
+    return 'Home Improvement';
+  };
+
+  const formatTimelineHorizon = (timeline_horizon_id?: string): string => {
+    if (!timeline_horizon_id) return '';
+    
+    const horizonMap: Record<string, string> = {
+      'asap': 'As Soon As Possible',
+      '2-weeks': 'Within 2 Weeks',
+      '1-month': 'Within 1 Month',
+      '3-months': 'Within 3 Months',
+      'custom': 'Custom Timeline',
+    };
+    
+    const normalizedHorizonId = timeline_horizon_id.toLowerCase().replace(/[_-]/g, '-');
+    return horizonMap[normalizedHorizonId] || timeline_horizon_id.replace(/[_-]/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[500px]">
@@ -236,19 +347,34 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Project Type</h3>
-                    <p>{bidCard.job_types?.display_name || 'Not specified'}</p>
+                    <p>{bidCard.job_types?.display_name || 
+                       formatProjectType(bidCard.job_type_id) || 
+                       formatProjectType(bidCard.type) || 
+                       'Not specified'}</p>
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Category</h3>
-                    <p>{bidCard.job_categories?.display_name || 'Not specified'}</p>
+                    <p>{bidCard.job_categories?.display_name || 
+                       getActualJobCategory({
+                         job_category_id: bidCard.job_category_id || undefined,
+                         service_type: bidCard.service_type,
+                         job_type_id: bidCard.job_type_id || undefined,
+                         type: bidCard.type
+                       }) || 
+                       'Not specified'}</p>
                   </div>
                   <div>
                     <h3 className="text-sm font-medium text-gray-500">Size</h3>
-                    <p className="capitalize">{bidCard.job_size || 'Not specified'}</p>
+                    <p className="capitalize">
+                      {bidCard.job_size || 'Medium'}
+                    </p>
                   </div>
                   <div>
-                    <h3 className="text-sm font-medium text-gray-500">Intention</h3>
-                    <p>{bidCard.project_intention_types?.display_name || 'Not specified'}</p>
+                    <h3 className="text-sm font-medium text-gray-500">Timeline</h3>
+                    <p>{bidCard.timeline_horizons?.display_name || 
+                       formatTimelineHorizon(bidCard.timeline_horizon_id) ||
+                       bidCard.timeline || 
+                       'Not specified'}</p>
                   </div>
                 </div>
                 
@@ -267,25 +393,6 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             </Card>
             
             <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Budget</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {bidCard.budget_min && bidCard.budget_max ? (
-                    <div className="text-xl font-bold">
-                      {formatCurrency(bidCard.budget_min)} - {formatCurrency(bidCard.budget_max)}
-                    </div>
-                  ) : bidCard.budget ? (
-                    <div className="text-xl font-bold">
-                      {formatCurrency(bidCard.budget)}
-                    </div>
-                  ) : (
-                    <p>No budget specified</p>
-                  )}
-                </CardContent>
-              </Card>
-              
               <Card>
                 <CardHeader>
                   <CardTitle>Timeline</CardTitle>

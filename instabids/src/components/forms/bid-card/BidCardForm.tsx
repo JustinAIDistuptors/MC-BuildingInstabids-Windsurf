@@ -42,6 +42,9 @@ const formSchema = z.object({
   // Budget fields
   job_size: z.string().optional(),
   group_bidding_enabled: z.boolean().default(false),
+  // Property details
+  property_size: z.string().optional(),
+  square_footage: z.number().optional(),
   // Review fields
   terms_accepted: z.boolean().optional(),
   marketing_consent: z.boolean().optional(),
@@ -312,17 +315,46 @@ export default function BidCardForm() {
             description: data.description || 'No description provided',
             status: 'published',
             bid_status: 'accepting_bids',
-            budget_min: data.job_size === 'small' ? 1000 : data.job_size === 'medium' ? 5000 : 10000,
-            budget_max: data.job_size === 'small' ? 5000 : data.job_size === 'medium' ? 15000 : 30000,
+            job_size: data.job_size || 'medium', // Store the actual job size (small, medium, large)
             city: data.location?.city || '',
             state: data.location?.state || '',
             zip_code: data.location?.zip_code || data.zip_code || '',
-            type: data.job_type_id === 'renovation' ? 'Renovation' : 
-                  data.job_type_id === 'new_construction' ? 'New Construction' : 
-                  data.job_type_id === 'repair' ? 'Repair' : 'One-Time',
-            job_type_id: data.job_type_id || 'other',
-            job_category_id: data.job_category_id || 'other',
-            property_type: 'residential' // Default to residential
+            
+            // Store job type information in dedicated columns
+            type: data.job_type_id || 'one_time',
+            job_type_id: data.job_type_id || 'one_time',
+            job_category_id: data.job_category_id || 'home_services',
+            service_type: data.job_category_id || 'home_services',
+            
+            // Store location as a JSON string in the location column
+            location: JSON.stringify({
+              address_line1: data.location?.address_line1 || '',
+              address_line2: data.location?.address_line2 || '',
+              city: data.location?.city || '',
+              state: data.location?.state || '',
+              zip_code: data.location?.zip_code || data.zip_code || '',
+            }),
+            
+            // Property details
+            property_type: 'residential', // Default to residential
+            property_size: data.property_size || '',
+            square_footage: data.square_footage || 0,
+            
+            // Timeline information
+            timeline: data.timeline_horizon_id || 'Not specified',
+            timeline_horizon_id: data.timeline_horizon_id || '',
+            timeline_start: data.timeline_start || null,
+            timeline_end: data.timeline_end || null,
+            bid_deadline: data.bid_deadline || null,
+            
+            // Additional project details
+            special_requirements: data.special_requirements || '',
+            guidance_for_bidders: data.guidance_for_bidders || '',
+            
+            // Group bidding and consent
+            group_bidding_enabled: data.group_bidding_enabled || false,
+            terms_accepted: data.terms_accepted || false,
+            marketing_consent: data.marketing_consent || false
           }
         ])
         .select();
@@ -615,7 +647,7 @@ export default function BidCardForm() {
                   viewBox="0 0 24 24" 
                   stroke="currentColor"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7m0 0l-7-7m7 7V3" />
                 </svg>
               </Button>
             ) : (

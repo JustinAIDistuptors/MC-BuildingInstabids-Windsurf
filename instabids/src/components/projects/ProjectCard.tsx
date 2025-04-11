@@ -2,6 +2,14 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { getProjectTypePlaceholder, formatProjectType, getJobCategory, formatTimelineHorizon } from '@/utils/project-images';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 // Helper function to format location for display
 export const formatLocation = (location: any): string => {
@@ -45,24 +53,32 @@ export const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
-// Format budget for display
-export const formatBudget = (min?: number | string, max?: number | string, fallback?: string) => {
-  if (!min && !max) {
-    return fallback || 'Not specified';
-  }
+// Helper function to get a generic placeholder image based on job category
+const getGenericPlaceholder = (project: any): string => {
+  // Map job categories to generic placeholder images
+  const categoryToImage: Record<string, string> = {
+    'Roofing': '/placeholders/construction.svg',
+    'Plumbing': '/placeholders/construction.svg',
+    'Electrical': '/placeholders/construction.svg',
+    'Painting': '/placeholders/renovation.svg',
+    'Flooring': '/placeholders/renovation.svg',
+    'Landscaping': '/placeholders/lawn-care.svg',
+    'Outdoor': '/placeholders/lawn-care.svg',
+    'Home Improvement': '/placeholders/renovation.svg',
+    'Construction': '/placeholders/construction.svg',
+    'Repair Services': '/placeholders/construction.svg',
+    'Maintenance Services': '/placeholders/lawn-care.svg',
+    'Handyman Services': '/placeholders/construction.svg',
+    'Labor Services': '/placeholders/construction.svg',
+    'Cleaning': '/placeholders/default-project.svg',
+    'HVAC': '/placeholders/construction.svg',
+  };
   
-  if (typeof min === 'string') min = parseFloat(min.replace(/[^0-9.-]+/g, ''));
-  if (typeof max === 'string') max = parseFloat(max.replace(/[^0-9.-]+/g, ''));
+  // Get the job category
+  const category = getActualJobCategory(project);
   
-  if (min && max) {
-    return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
-  } else if (min) {
-    return `$${min.toLocaleString()}+`;
-  } else if (max) {
-    return `Up to $${max.toLocaleString()}`;
-  }
-  
-  return fallback || 'Not specified';
+  // Return the matching placeholder or a default
+  return categoryToImage[category] || '/placeholders/default-project.svg';
 };
 
 interface ProjectCardProps {
@@ -75,7 +91,142 @@ interface ProjectCardProps {
   linkToDetails?: boolean;
   className?: string;
   imageUrl?: string;
+  usePlaceholder?: boolean;
 }
+
+// Helper functions for consistent display
+const getActualJobCategory = (project: any): string => {
+  // Hard-coded job categories based on job_category_id
+  const jobCategoryMap: Record<string, string> = {
+    // Specific job categories
+    'roof-install': 'Roofing',
+    'fence-building': 'Fencing',
+    'driveway-paving': 'Paving',
+    'deck-construction': 'Decking',
+    'painting-exterior': 'Painting',
+    'siding-installation': 'Siding',
+    'gutter-installation': 'Gutters',
+    'landscaping-project': 'Landscaping',
+    'patio-installation': 'Outdoor Construction',
+    'concrete-work': 'Concrete',
+    'insulation-install': 'Insulation',
+    'window-installation': 'Windows & Doors',
+    'door-installation': 'Windows & Doors',
+    'garage-door-install': 'Garage',
+    'solar-panel-install': 'Solar',
+    'flooring-installation': 'Flooring',
+    'tile-installation': 'Tiling',
+    'kitchen-countertop': 'Kitchen',
+    'bathroom-remodel': 'Bathroom',
+    'basement-finishing': 'Basement',
+    'outdoor-lighting': 'Outdoor Lighting',
+    'sprinkler-system': 'Irrigation',
+    'tree-removal': 'Tree Service',
+    'wallpaper-hanging': 'Interior Decor',
+    'shed-construction': 'Outdoor Construction',
+    'generator-install': 'Electrical',
+    'chimney-construction': 'Masonry',
+    'water-heater-install': 'Plumbing',
+    'security-system': 'Security',
+    'window-repair': 'Window Repair',
+    'plumbing-repair': 'Plumbing',
+    'electrical-repair': 'Electrical',
+    'roof-repair': 'Roofing',
+    'pool-cleaning': 'Pool Services',
+    'lawn-maintenance': 'Lawn Care',
+    'house-cleaning': 'Cleaning Services',
+    
+    // Project types should NOT be categories
+    'one-time': 'General Contracting',
+    'one_time': 'General Contracting',
+    'continual': 'Maintenance Services',
+    'repair': 'Repair Services',
+    'handyman': 'Handyman Services',
+    'labor': 'Labor Services',
+    'multi-step': 'Construction'
+  };
+  
+  // First check if we have a direct match in our job category map
+  const normalizedCategoryId = project.job_category_id ? 
+    project.job_category_id.toLowerCase().replace(/[_-]/g, '-') : '';
+    
+  if (normalizedCategoryId && jobCategoryMap[normalizedCategoryId]) {
+    return jobCategoryMap[normalizedCategoryId];
+  }
+  
+  // Check for category in service_type
+  const normalizedServiceType = project.service_type ? 
+    project.service_type.toLowerCase().replace(/[_-]/g, '-') : '';
+    
+  if (normalizedServiceType && jobCategoryMap[normalizedServiceType]) {
+    return jobCategoryMap[normalizedServiceType];
+  }
+  
+  // If we have a job_category_id but no match in our map, format it for display
+  if (project.job_category_id) {
+    return project.job_category_id
+      .replace(/[-_]/g, ' ')
+      .split(' ')
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+  
+  // Check if we have a project type that maps to a category
+  const normalizedJobTypeId = project.job_type_id ? 
+    project.job_type_id.toLowerCase().replace(/[_-]/g, '-') : '';
+  
+  if (normalizedJobTypeId && jobCategoryMap[normalizedJobTypeId]) {
+    return jobCategoryMap[normalizedJobTypeId];
+  }
+  
+  // Check type field
+  const normalizedType = project.type ? 
+    project.type.toLowerCase().replace(/[_-]/g, '-') : '';
+  
+  if (normalizedType && jobCategoryMap[normalizedType]) {
+    return jobCategoryMap[normalizedType];
+  }
+  
+  // Last resort - use a generic category based on what we have
+  return 'Home Improvement';
+};
+
+const getProjectType = (project: any): string => {
+  // Project type labels
+  const projectTypeLabels: Record<string, string> = {
+    'one-time': 'One-Time Project',
+    'one_time': 'One-Time Project',
+    'continual': 'Continual Service',
+    'repair': 'Repair Service',
+    'handyman': 'Handyman Service',
+    'labor': 'Labor Only',
+    'multi-step': 'Multi-Step Project'
+  };
+  
+  // First check job_type_id which should contain the project type
+  if (project.job_type_id) {
+    const normalizedType = project.job_type_id.toLowerCase().replace('_', '-');
+    if (projectTypeLabels[normalizedType]) {
+      return projectTypeLabels[normalizedType];
+    }
+  }
+  
+  // Then check type field
+  if (project.type) {
+    const normalizedType = project.type.toLowerCase().replace('_', '-');
+    if (projectTypeLabels[normalizedType]) {
+      return projectTypeLabels[normalizedType];
+    }
+  }
+  
+  // If we have service_type, use that
+  if (project.service_type) {
+    return formatProjectType(project.service_type);
+  }
+  
+  // Default
+  return 'General Project';
+};
 
 export default function ProjectCard({ 
   project, 
@@ -86,7 +237,8 @@ export default function ProjectCard({
   showShareButton = true,
   linkToDetails = false,
   className = '',
-  imageUrl
+  imageUrl,
+  usePlaceholder = true
 }: ProjectCardProps) {
   // Determine the effective status for display
   const effectiveStatus = project.bid_status || project.status || 'draft';
@@ -99,7 +251,7 @@ export default function ProjectCard({
   };
   
   // Handle delete click
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     // Stop event propagation
     e.stopPropagation();
     e.preventDefault();
@@ -109,22 +261,49 @@ export default function ProjectCard({
       console.log('Delete confirmed for project:', project.id);
       
       try {
-        // DIRECT APPROACH: Manipulate localStorage directly
-        console.log('Using direct localStorage manipulation to delete project');
+        // First, delete all media associated with this project
+        const { data: mediaData, error: mediaError } = await supabase
+          .from('project_media')
+          .select('*')
+          .eq('project_id', project.id);
         
-        // Get current projects from localStorage
-        const localProjectsString = localStorage.getItem('mock_projects');
-        const localProjects = localProjectsString ? JSON.parse(localProjectsString) : [];
+        if (!mediaError && mediaData && mediaData.length > 0) {
+          console.log('Deleting media files from storage:', mediaData.length, 'files');
+          
+          // Delete each media item from storage
+          for (const media of mediaData) {
+            const fileName = media.file_name;
+            const { error: storageError } = await supabase.storage
+              .from('projectmedia')
+              .remove([`${project.id}/${fileName}`]);
+            
+            if (storageError) {
+              console.error('Error deleting media from storage:', storageError);
+            }
+          }
+          
+          // Delete media records from database
+          const { error: mediaDeleteError } = await supabase
+            .from('project_media')
+            .delete()
+            .eq('project_id', project.id);
+          
+          if (mediaDeleteError) {
+            console.error('Error deleting media records:', mediaDeleteError);
+          }
+        }
         
-        console.log('Before deletion:', localProjects.length, 'projects');
+        // Delete the project from Supabase
+        const { error: projectDeleteError } = await supabase
+          .from('projects')
+          .delete()
+          .eq('id', project.id);
         
-        // Filter out the project to delete
-        const updatedProjects = localProjects.filter((p: any) => p.id !== project.id);
+        if (projectDeleteError) {
+          throw projectDeleteError;
+        }
         
-        console.log('After deletion:', updatedProjects.length, 'projects');
-        
-        // Save back to localStorage
-        localStorage.setItem('mock_projects', JSON.stringify(updatedProjects));
+        console.log('Project deleted successfully from Supabase');
         
         // If onDelete handler exists, call it
         if (onDelete) {
@@ -183,13 +362,19 @@ export default function ProjectCard({
   };
   
   // Get image URL or use placeholder
-  const projectImageUrl = imageUrl || project.imageUrl || '/placeholder-project.jpg';
+  let projectImageUrl = imageUrl || project.imageUrl;
+  
+  // Use type-based placeholder if requested or if no image URL is available
+  if (usePlaceholder || !projectImageUrl) {
+    // Always use a placeholder image for now
+    projectImageUrl = getGenericPlaceholder(project);
+  }
   
   // Handle image error
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     const target = e.target as HTMLImageElement;
     target.onerror = null;
-    target.src = '/placeholder-project.jpg';
+    target.src = '/placeholders/default-project.svg';
   };
   
   return (
@@ -199,23 +384,12 @@ export default function ProjectCard({
         {/* Project Image */}
         <div className="h-40 bg-gray-200 relative overflow-hidden">
           <div className="relative w-full h-full">
-            {projectImageUrl.includes('supabase.co') ? (
-              // Use regular img tag for Supabase images to avoid Next.js Image configuration issues
-              <img 
-                src={projectImageUrl}
-                alt={project.title || "Project image"}
-                className="w-full h-full object-cover"
-                onError={handleImageError}
-              />
-            ) : (
-              // Use Next.js Image for other images
-              <img 
-                src={projectImageUrl}
-                alt={project.title || "Project image"}
-                className="w-full h-full object-cover"
-                onError={handleImageError}
-              />
-            )}
+            <img 
+              src={projectImageUrl}
+              alt={project.title || "Project image"}
+              className="w-full h-full object-cover"
+              onError={handleImageError}
+            />
           </div>
         </div>
         
@@ -243,35 +417,83 @@ export default function ProjectCard({
       
       {/* Card Content */}
       <div className="p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-1">{project.title}</h3>
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
+        {/* Job Category - Top Position */}
+        <h3 className="text-xl font-bold text-gray-900 mb-1">
+          {getActualJobCategory(project)}
+        </h3>
         
+        {/* Project Type */}
+        <div className="text-md font-medium text-blue-600 mb-3">
+          {getProjectType(project)}
+        </div>
+        
+        {/* Project Title */}
+        <div className="text-lg font-semibold text-gray-800 mb-1 line-clamp-1">
+          {project.title || 'Untitled Project'}
+        </div>
+        
+        {/* Project Description */}
+        <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+          {project.description || 'No description provided'}
+        </p>
+        
+        {/* Timeline and Zip Code */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm mb-4">
-          <div>
-            <div className="text-gray-500 text-xs mb-1">Budget</div>
-            <div className="font-medium">
-              {formatBudget(project.budget_min, project.budget_max, project.budget)}
-            </div>
-          </div>
           <div>
             <div className="text-gray-500 text-xs mb-1">Timeline</div>
             <div className="font-medium">
-              {project.timeline || 'Not specified'}
+              {project.timeline || 
+               (project.timeline_horizon_id ? formatTimelineHorizon(project.timeline_horizon_id) : 'Not specified')}
             </div>
           </div>
           <div>
             <div className="text-gray-500 text-xs mb-1">Location</div>
             <div className="font-medium">
-              {formatLocation(project.location)}
+              {project.zip_code || 
+               (project.location && typeof project.location === 'string' && 
+                JSON.parse(project.location).zip_code) || 
+               'Not specified'}
             </div>
           </div>
+          
+          {/* Project Size */}
           <div>
-            <div className="text-gray-500 text-xs mb-1">Type</div>
+            <div className="text-gray-500 text-xs mb-1">Project Size</div>
             <div className="font-medium capitalize">
-              {project.job_type_id || project.type || 'Not specified'}
+              {project.job_size || 'Medium'}
             </div>
           </div>
+          
+          {/* Property Size (if available) */}
+          {(project.square_footage || project.property_size) && (
+            <div>
+              <div className="text-gray-500 text-xs mb-1">Property Size</div>
+              <div className="font-medium">
+                {project.square_footage ? `${project.square_footage} sq ft` : project.property_size || 'Not specified'}
+              </div>
+            </div>
+          )}
         </div>
+        
+        {/* Thumbnail Gallery */}
+        {project.media && project.media.length > 0 && (
+          <div className="mt-2 mb-3 flex gap-1 overflow-x-auto pb-1">
+            {project.media.slice(0, 4).map((item: any, index: number) => (
+              <div key={item.id} className="w-14 h-14 flex-shrink-0 rounded overflow-hidden border border-gray-200">
+                <img 
+                  src={item.media_url} 
+                  alt={`Project image ${index + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+            {project.media.length > 4 && (
+              <div className="w-14 h-14 flex-shrink-0 rounded bg-gray-100 flex items-center justify-center text-gray-500 text-xs font-medium border border-gray-200">
+                +{project.media.length - 4}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       
       {/* Card Footer */}

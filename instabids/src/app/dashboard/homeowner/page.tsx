@@ -56,44 +56,93 @@ export default function HomeownerDashboard() {
         setLoading(true);
         console.log('Dashboard: Loading projects from Supabase...');
         
-        const { data, error } = await supabase
+        // Get all projects
+        const { data: projectsData, error: projectsError } = await supabase
           .from('projects')
           .select('*')
           .order('created_at', { ascending: false });
         
-        if (error) {
-          console.error('Dashboard: Error loading projects from Supabase:', error);
+        if (projectsError) {
+          console.error('Dashboard: Error loading projects from Supabase:', projectsError);
           setProjects([]);
-        } else {
-          console.log('Dashboard: Projects loaded from Supabase:', data);
-          setProjects(data || []);
+          return;
+        }
+        
+        console.log('Dashboard: Projects loaded from Supabase:', projectsData);
+        
+        if (!projectsData || projectsData.length === 0) {
+          setProjects([]);
+          setLoading(false);
+          return;
+        }
+        
+        // Get media for all projects in a single query - MATCHING MY PROJECTS PAGE
+        const { data: allMediaData, error: mediaError } = await supabase
+          .from('project_media')
+          .select('*');
+        
+        if (mediaError) {
+          console.error('Dashboard: Error loading media:', mediaError);
+          // Continue with projects but without media
+          setProjects(projectsData);
           
           // Calculate stats
-          const activeCount = data?.filter((p: any) => 
-            p.status === 'published' && p.bid_status !== 'completed'
-          ).length || 0;
-          
-          // Simulate bid counts - in a real app this would come from the API
-          const totalBids = data?.reduce((acc: number, p: any) => 
-            p.status === 'accepting_bids' ? acc + (p.bid_count || 0) : acc
-          , 0) || 0;
-          
-          const completedCount = data?.filter((p: any) => 
-            p.bid_status === "completed"
-          ).length || 0;
-          
-          setStats({
-            activeProjects: activeCount,
-            bidReceived: totalBids,
-            projectsCompleted: completedCount
-          });
+          calculateStats(projectsData);
+          return;
         }
+        
+        console.log('Dashboard: Media loaded:', allMediaData);
+        
+        // Map media to their respective projects - MATCHING MY PROJECTS PAGE
+        const projectsWithMedia = projectsData.map(project => {
+          const projectMedia = allMediaData?.filter(
+            media => media.project_id === project.id
+          ) || [];
+          
+          // Add hasMedia flag for ProjectCard component
+          return {
+            ...project,
+            media: projectMedia,
+            hasMedia: projectMedia.length > 0,
+            // Set imageUrl for the ProjectCard component
+            imageUrl: projectMedia.length > 0 ? projectMedia[0].media_url : undefined
+          };
+        });
+        
+        console.log('Dashboard: Projects with media:', projectsWithMedia);
+        setProjects(projectsWithMedia);
+        
+        // Calculate stats
+        calculateStats(projectsWithMedia);
       } catch (error) {
         console.error('Dashboard: Error loading projects:', error);
         setProjects([]);
       } finally {
         setLoading(false);
       }
+    };
+    
+    // Helper function to calculate stats
+    const calculateStats = (data: any[]) => {
+      // Calculate stats
+      const activeCount = data?.filter((p: any) => 
+        p.status === 'published' && p.bid_status !== 'completed'
+      ).length || 0;
+      
+      // Simulate bid counts - in a real app this would come from the API
+      const totalBids = data?.reduce((acc: number, p: any) => 
+        p.status === 'accepting_bids' ? acc + (p.bid_count || 0) : acc
+      , 0) || 0;
+      
+      const completedCount = data?.filter((p: any) => 
+        p.bid_status === "completed"
+      ).length || 0;
+      
+      setStats({
+        activeProjects: activeCount,
+        bidReceived: totalBids,
+        projectsCompleted: completedCount
+      });
     };
     
     loadProjects();
@@ -212,7 +261,7 @@ export default function HomeownerDashboard() {
                 showDeleteButton={true}
                 onDelete={handleDelete}
                 className="h-full"
-                imageUrl={project.imageUrl || '/placeholder-project.jpg'}
+                usePlaceholder={true}
               />
             ))}
           </div>
@@ -238,7 +287,7 @@ export default function HomeownerDashboard() {
               showDeleteButton={true}
               onDelete={handleDelete}
               className="h-full"
-              imageUrl={project.imageUrl || '/placeholder-project.jpg'}
+              usePlaceholder={true}
             />
           ))}
         </div>
