@@ -33,7 +33,7 @@ export const BidCardService = {
       });
       
       const { data, error } = await supabase
-        .from('bid_cards')
+        .from('projects')
         .insert([
           {
             ...bidCardData,
@@ -45,6 +45,10 @@ export const BidCardService = {
       if (error) {
         console.error('Error saving draft:', error);
         throw new Error('Failed to save draft');
+      }
+      
+      if (!data || data.length === 0) {
+        throw new Error('No data returned from insert operation');
       }
       
       return { id: data[0].id };
@@ -64,10 +68,10 @@ export const BidCardService = {
     try {
       const formData = new FormData();
       
-      // Add the bid card data as JSON with open status
+      // Add the bid card data as JSON with published status
       formData.append('data', JSON.stringify({
         ...bidCardData,
-        status: 'open'
+        status: 'published'
       }));
       
       // Add media files
@@ -76,11 +80,11 @@ export const BidCardService = {
       });
       
       const { data, error } = await supabase
-        .from('bid_cards')
+        .from('projects')
         .insert([
           {
             ...bidCardData,
-            status: 'open'
+            status: 'published'
           }
         ])
         .select('id');
@@ -88,6 +92,10 @@ export const BidCardService = {
       if (error) {
         console.error('Error submitting bid card:', error);
         throw new Error('Failed to submit bid card');
+      }
+      
+      if (!data || data.length === 0) {
+        throw new Error('No data returned from insert operation');
       }
       
       return { id: data[0].id };
@@ -104,15 +112,36 @@ export const BidCardService = {
     try {
       console.log('BidCardService.getBidCard: Fetching project with ID:', id);
       
-      // Use Supabase directly instead of the mock API
+      // Fetch the project from the projects table
       const { data, error } = await supabase
-        .from('bid_cards')
+        .from('projects')
         .select('*')
         .eq('id', id)
         .single();
       
       if (error) {
         console.error('Error fetching project from Supabase:', error);
+        
+        // Try to handle the case where the table might not exist yet
+        if (error.code === '42P01') { // PostgreSQL code for undefined_table
+          console.warn('Projects table does not exist yet, returning mock data');
+          return { 
+            bidCard: {
+              id,
+              title: 'Project not found',
+              description: 'This project could not be found in the database.',
+              status: 'draft',
+              job_category_id: '',
+              job_type_id: '',
+              intention_type_id: '',
+              location: { address_line1: '', city: '', state: '', zip_code: '' },
+              group_bidding_enabled: false,
+              visibility: 'public',
+              media: []
+            } as BidCard & { media: any[] }
+          };
+        }
+        
         throw new Error('Failed to get project');
       }
       
@@ -121,12 +150,33 @@ export const BidCardService = {
         throw new Error('Project not found');
       }
       
-      console.log('BidCardService.getBidCard: Fetched from Supabase:', data);
+      console.log('BidCardService.getBidCard: Fetched project from Supabase:', data);
+      
+      // Fetch media files for this project
+      const { data: mediaData, error: mediaError } = await supabase
+        .from('project_media')
+        .select('*')
+        .eq('project_id', id);
+      
+      if (mediaError) {
+        console.error('Error fetching media for project:', mediaError);
+      }
+      
+      console.log('BidCardService.getBidCard: Fetched media from Supabase:', mediaData || []);
+      
+      // Format the media data to match what the UI expects
+      const formattedMedia = (mediaData || []).map(item => ({
+        id: item.id,
+        media_type: 'photo', // Set to 'photo' to match what the UI expects
+        url: item.media_url,
+        file_name: item.file_name,
+        content_type: item.media_type
+      }));
       
       // Convert the Supabase data to the expected format
       const bidCard = {
         ...data,
-        media: data.media || []
+        media: formattedMedia
       };
       
       return { bidCard };
@@ -146,7 +196,7 @@ export const BidCardService = {
   ): Promise<{ id: string }> => {
     try {
       const { data, error } = await supabase
-        .from('bid_cards')
+        .from('projects')
         .update([
           {
             ...bidCardData
@@ -172,14 +222,53 @@ export const BidCardService = {
    */
   deleteBidCard: async (id: string): Promise<{ success: boolean }> => {
     try {
+      console.log('BidCardService.deleteBidCard: Deleting project with ID:', id);
+      
+      // First delete associated media references
+      const { error: mediaDeleteError } = await supabase
+        .from('project_media')
+        .delete()
+        .eq('project_id', id);
+      
+      if (mediaDeleteError) {
+        console.error('Error deleting project media references:', mediaDeleteError);
+        // Continue with project deletion even if media deletion fails
+      }
+      
+      // Then delete the project itself
       const { error } = await supabase
-        .from('bid_cards')
+        .from('projects')
         .delete()
         .eq('id', id);
       
       if (error) {
-        console.error('Error deleting bid card:', error);
-        throw new Error('Failed to delete bid card');
+        console.error('Error deleting project from Supabase:', error);
+        throw new Error('Failed to delete project');
+      }
+      
+      // Try to delete media files from storage
+      try {
+        const { data: storageData, error: storageError } = await supabase
+          .storage
+          .from('projectmedia')
+          .list(id);
+        
+        if (!storageError && storageData && storageData.length > 0) {
+          // Delete all files in the project folder
+          const filesToDelete = storageData.map(file => `${id}/${file.name}`);
+          
+          const { error: deleteFilesError } = await supabase
+            .storage
+            .from('projectmedia')
+            .remove(filesToDelete);
+          
+          if (deleteFilesError) {
+            console.error('Error deleting project media files:', deleteFilesError);
+          }
+        }
+      } catch (storageError) {
+        console.error('Error handling storage cleanup:', storageError);
+        // Continue even if storage cleanup fails
       }
       
       return { success: true };
@@ -195,12 +284,17 @@ export const BidCardService = {
   getUserBidCards: async (): Promise<{ bidCards: BidCard[] }> => {
     try {
       const { data, error } = await supabase
-        .from('bid_cards')
-        .select('*');
+        .from('projects')
+        .select('*')
+        .order('created_at', { ascending: false });
       
       if (error) {
-        console.error('Error getting bid cards:', error);
-        throw new Error('Failed to get bid cards');
+        console.error('Error fetching user bid cards:', error);
+        throw new Error('Failed to get user bid cards');
+      }
+      
+      if (!data) {
+        return { bidCards: [] };
       }
       
       return { bidCards: data };

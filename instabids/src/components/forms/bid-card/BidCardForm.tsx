@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { createClient } from '@supabase/supabase-js';
 
 // Import ALL step components
 import ProjectClassification from './steps/ProjectClassification';
@@ -266,7 +267,14 @@ export default function BidCardForm() {
   const [showBidCard, setShowBidCard] = useState(false);
   const [submittedData, setSubmittedData] = useState<FormValues | null>(null);
   const [formKey, setFormKey] = useState(Date.now()); // Used to force re-render the form
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
+  
+  // Initialize Supabase client
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  );
   
   // Define form steps
   const FORM_STEPS = [
@@ -288,91 +296,121 @@ export default function BidCardForm() {
   });
   
   // Handle form submission - only triggered by the submit button
-  const onSubmit = (data: FormValues) => {
+  const onSubmit = async (data: FormValues) => {
     console.log('Form submitted:', data);
     console.log('Media files:', mediaFiles);
     
-    // Save the submitted data
-    setSubmittedData(data);
+    setIsSubmitting(true);
     
-    // Show success screen
-    setIsSubmitted(true);
-    
-    // Generate a unique ID for the project
-    const projectId = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Create a properly formatted project object
-    const newProject = {
-      id: projectId,
-      title: data.title || 'Untitled Project',
-      description: data.description || 'No description provided',
-      status: 'accepting_bids',
-      budget_min: data.job_size === 'small' ? 1000 : data.job_size === 'medium' ? 5000 : 10000,
-      budget_max: data.job_size === 'small' ? 5000 : data.job_size === 'medium' ? 15000 : 30000,
-      location: data.location?.city && data.location?.state ? 
-        `${data.location.city}, ${data.location.state} ${data.location.zip_code || ''}` : 
-        data.zip_code || 'Not specified',
-      type: data.job_type_id === 'renovation' ? 'Renovation' : 
-            data.job_type_id === 'new_construction' ? 'New Construction' : 
-            data.job_type_id === 'repair' ? 'Repair' : 'One-Time',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    // Store in localStorage properly by adding to the existing projects array
     try {
-      // Get existing projects
-      const existingProjectsStr = localStorage.getItem('mock_projects');
-      let existingProjects = [];
-      
-      if (existingProjectsStr) {
-        try {
-          existingProjects = JSON.parse(existingProjectsStr);
-          // Ensure it's an array
-          if (!Array.isArray(existingProjects)) {
-            existingProjects = [];
+      // 1. Create project in Supabase
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .insert([
+          {
+            title: data.title || 'Untitled Project',
+            description: data.description || 'No description provided',
+            status: 'published',
+            bid_status: 'accepting_bids',
+            budget_min: data.job_size === 'small' ? 1000 : data.job_size === 'medium' ? 5000 : 10000,
+            budget_max: data.job_size === 'small' ? 5000 : data.job_size === 'medium' ? 15000 : 30000,
+            city: data.location?.city || '',
+            state: data.location?.state || '',
+            zip_code: data.location?.zip_code || data.zip_code || '',
+            type: data.job_type_id === 'renovation' ? 'Renovation' : 
+                  data.job_type_id === 'new_construction' ? 'New Construction' : 
+                  data.job_type_id === 'repair' ? 'Repair' : 'One-Time',
+            job_type_id: data.job_type_id || 'other',
+            job_category_id: data.job_category_id || 'other',
+            property_type: 'residential' // Default to residential
           }
-        } catch (e) {
-          console.error('Error parsing existing projects:', e);
-          existingProjects = [];
+        ])
+        .select();
+      
+      if (projectError) {
+        console.error('Error creating project:', projectError);
+        return;
+      }
+      
+      if (!projectData || projectData.length === 0) {
+        console.error('No project data returned after creation');
+        return;
+      }
+      
+      const projectId = projectData[0].id;
+      console.log('Project created with ID:', projectId);
+      
+      // 2. Upload media files if any
+      const uploadedUrls: string[] = [];
+      
+      if (mediaFiles.length > 0) {
+        for (let i = 0; i < mediaFiles.length; i++) {
+          const file = mediaFiles[i];
+          // TypeScript safety check
+          if (!file) {
+            console.error(`File at index ${i} is undefined, skipping`);
+            continue;
+          }
+          
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${projectId}/${Date.now()}_${i}.${fileExt}`;
+          
+          console.log(`Uploading file ${i + 1}/${mediaFiles.length} to projectmedia/${fileName}`);
+          
+          const { data: uploadData, error: uploadError } = await supabase
+            .storage
+            .from('projectmedia')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: true
+            });
+          
+          if (uploadError) {
+            console.error(`Error uploading file ${i + 1}:`, uploadError);
+            continue;
+          }
+          
+          // Get the public URL
+          const { data: publicUrlData } = supabase
+            .storage
+            .from('projectmedia')
+            .getPublicUrl(fileName);
+          
+          if (publicUrlData) {
+            uploadedUrls.push(publicUrlData.publicUrl);
+            console.log(`File ${i + 1} uploaded successfully:`, publicUrlData.publicUrl);
+            
+            // 3. Save media reference to project_media table
+            const { error: mediaRefError } = await supabase
+              .from('project_media')
+              .insert([{
+                project_id: projectId,
+                media_url: publicUrlData.publicUrl,
+                media_type: file.type,
+                file_name: file.name
+              }]);
+            
+            if (mediaRefError) {
+              console.error(`Error saving media reference ${i + 1}:`, mediaRefError);
+            } else {
+              console.log(`Media reference ${i + 1} saved successfully`);
+            }
+          }
         }
       }
       
-      // Add the new project
-      existingProjects.push(newProject);
+      // Save the submitted data
+      setSubmittedData(data);
       
-      // Save back to localStorage
-      localStorage.setItem('mock_projects', JSON.stringify(existingProjects));
+      // Show success screen
+      setIsSubmitted(true);
       
-      // Show notification
-      if (typeof window !== 'undefined') {
-        // Create and show toast notification
-        const toast = document.createElement('div');
-        toast.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
-        toast.innerHTML = `
-          <div class="flex">
-            <div class="py-1"><svg class="h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-            </svg></div>
-            <div>
-              <p class="font-bold">Project Added</p>
-              <p class="text-sm">Your project has been added to your dashboard.</p>
-            </div>
-          </div>
-        `;
-        document.body.appendChild(toast);
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
-          if (document.body.contains(toast)) {
-            document.body.removeChild(toast);
-          }
-        }, 5000);
-      }
+      console.log('Project saved to Supabase with ID:', projectId);
       
-      console.log('Project saved to localStorage:', newProject);
     } catch (error) {
-      console.error('Failed to save project to localStorage:', error);
+      console.error('Failed to save project:', error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
   

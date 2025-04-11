@@ -328,12 +328,11 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {bidCard.media.map((item, index) => (
                     <div key={item.id || index} className="relative aspect-square rounded-md overflow-hidden border">
-                      {item.media_type === 'photo' && item.url ? (
-                        <Image
+                      {item.url ? (
+                        <img
                           src={item.url}
                           alt={`Project image ${index + 1}`}
-                          fill
-                          className="object-cover"
+                          className="object-cover w-full h-full"
                         />
                       ) : (
                         <div className="flex items-center justify-center h-full bg-gray-100 text-gray-400">
