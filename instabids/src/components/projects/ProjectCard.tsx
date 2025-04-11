@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 // Helper function to format location for display
 export const formatLocation = (location: any): string => {
@@ -51,39 +52,48 @@ export const formatBudget = (min?: number | string, max?: number | string, fallb
     return fallback || 'Not specified';
   }
   
-  const minFormatted = typeof min === 'number' 
-    ? `$${min.toLocaleString()}` 
-    : min?.toString().replace(/^\$/, '') ? `$${min?.toString().replace(/^\$/, '')}` : 'Not specified';
-    
-  const maxFormatted = typeof max === 'number' 
-    ? `$${max.toLocaleString()}` 
-    : max?.toString().replace(/^\$/, '') ? `$${max?.toString().replace(/^\$/, '')}` : '';
+  if (typeof min === 'string') min = parseFloat(min.replace(/[^0-9.-]+/g, ''));
+  if (typeof max === 'string') max = parseFloat(max.replace(/[^0-9.-]+/g, ''));
   
-  return maxFormatted ? `${minFormatted} - ${maxFormatted}` : minFormatted;
+  if (min && max) {
+    return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
+  } else if (min) {
+    return `$${min.toLocaleString()}+`;
+  } else if (max) {
+    return `Up to $${max.toLocaleString()}`;
+  }
+  
+  return fallback || 'Not specified';
 };
 
 interface ProjectCardProps {
   project: any;
   onViewDetails?: (project: any) => void;
   onDelete?: (id: string) => void;
+  onShare?: (project: any) => void;
   showDeleteButton?: boolean;
+  showShareButton?: boolean;
   linkToDetails?: boolean;
   className?: string;
+  imageUrl?: string;
 }
 
 export default function ProjectCard({ 
   project, 
   onViewDetails, 
   onDelete, 
+  onShare,
   showDeleteButton = true,
+  showShareButton = true,
   linkToDetails = false,
-  className = ''
+  className = '',
+  imageUrl
 }: ProjectCardProps) {
   // Determine the effective status for display
   const effectiveStatus = project.bid_status || project.status || 'draft';
   
   // Handle view details click
-  const handleViewDetails = () => {
+  const handleViewDetails = (e: React.MouseEvent) => {
     if (onViewDetails) {
       onViewDetails(project);
     }
@@ -91,9 +101,58 @@ export default function ProjectCard({
   
   // Handle delete click
   const handleDelete = (e: React.MouseEvent) => {
+    // Stop event propagation
     e.stopPropagation();
-    if (onDelete) {
-      onDelete(project.id);
+    e.preventDefault();
+    
+    // Confirm deletion
+    if (window.confirm(`Are you sure you want to delete "${project.title}"?`)) {
+      console.log('Delete confirmed for project:', project.id);
+      
+      try {
+        // DIRECT APPROACH: Manipulate localStorage directly
+        console.log('Using direct localStorage manipulation to delete project');
+        
+        // Get current projects from localStorage
+        const localProjectsString = localStorage.getItem('mock_projects');
+        const localProjects = localProjectsString ? JSON.parse(localProjectsString) : [];
+        
+        console.log('Before deletion:', localProjects.length, 'projects');
+        
+        // Filter out the project to delete
+        const updatedProjects = localProjects.filter((p: any) => p.id !== project.id);
+        
+        console.log('After deletion:', updatedProjects.length, 'projects');
+        
+        // Save back to localStorage
+        localStorage.setItem('mock_projects', JSON.stringify(updatedProjects));
+        
+        // If onDelete handler exists, call it
+        if (onDelete) {
+          onDelete(project.id);
+        }
+        
+        // Force a hard refresh of the page
+        window.location.href = window.location.href;
+      } catch (error) {
+        console.error('Error deleting project:', error);
+        alert('Failed to delete project. Please try again.');
+      }
+    }
+  };
+  
+  // Handle share click
+  const handleShare = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log('Share button clicked for project:', project.id);
+    
+    if (onShare) {
+      onShare(project);
+    } else {
+      // Default share behavior - navigate to share page
+      window.location.href = `/shared-project/${project.id}`;
     }
   };
   
@@ -124,39 +183,60 @@ export default function ProjectCard({
     );
   };
   
+  // Get image URL or use placeholder
+  const projectImageUrl = imageUrl || project.imageUrl || '/placeholder-project.jpg';
+  
+  // Handle image error
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const target = e.target as HTMLImageElement;
+    target.onerror = null;
+    target.src = '/placeholder-project.jpg';
+  };
+  
   return (
     <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-200 ${className}`}>
-      {/* Card Header */}
-      <div className="p-5 border-b border-gray-100">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-1">{project.title}</h3>
-            <div className="flex items-center gap-2">
-              <StatusBadge status={effectiveStatus} />
-              <span className="text-sm text-gray-500">
-                {new Date(project.created_at).toLocaleDateString()}
-              </span>
+      {/* Status Badge - Positioned over the image */}
+      <div className="relative">
+        {/* Project Image */}
+        <div className="h-40 bg-gray-200 relative overflow-hidden">
+          <div className="relative w-full h-full">
+            <Image 
+              src={projectImageUrl}
+              alt={project.title || "Project image"}
+              fill
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+              style={{ objectFit: 'cover' }}
+              onError={handleImageError}
+              priority={false}
+            />
+          </div>
+        </div>
+        
+        {/* Status Badge - Positioned at the top left of the image */}
+        <div className="absolute top-2 left-2">
+          <StatusBadge status={effectiveStatus} />
+        </div>
+        
+        {/* Indicators for media and bids - Positioned at top right */}
+        <div className="absolute top-2 right-2 flex gap-1">
+          {project.hasMedia && (
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
             </div>
-          </div>
-          <div className="flex gap-1">
-            {project.hasMedia && (
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-50 text-blue-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-            )}
-            {project.bid_count > 0 && (
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-600">
-                <span className="text-xs font-medium">{project.bid_count}</span>
-              </div>
-            )}
-          </div>
+          )}
+          {project.bid_count > 0 && (
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-50 text-green-600">
+              <span className="text-xs font-medium">{project.bid_count}</span>
+            </div>
+          )}
         </div>
       </div>
       
-      {/* Card Body */}
-      <div className="p-5">
+      {/* Card Content */}
+      <div className="p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-1 line-clamp-1">{project.title}</h3>
         <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
         
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm mb-4">
@@ -191,17 +271,31 @@ export default function ProjectCard({
       <div className="px-5 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center">
         <DetailsButton />
         
-        {showDeleteButton && onDelete && (
-          <button 
-            onClick={handleDelete}
-            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Delete
-          </button>
-        )}
+        <div className="flex gap-2">
+          {showShareButton && (
+            <button 
+              onClick={handleShare}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              Share
+            </button>
+          )}
+          
+          {showDeleteButton && onDelete && (
+            <button 
+              onClick={handleDelete}
+              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

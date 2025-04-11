@@ -1,7 +1,7 @@
 // Messaging implementation
 // This file contains the actual implementation of messaging functionality
 
-import { createClient } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 
 // Types
 export interface User {
@@ -52,7 +52,7 @@ function cleanProjectId(projectId: string): string {
 }
 
 // Helper function to determine if a table exists
-async function tableExists(supabase: any, tableName: string): Promise<boolean> {
+async function tableExists(tableName: string): Promise<boolean> {
   try {
     // Split schema and table name
     const parts = tableName.split('.');
@@ -74,11 +74,9 @@ async function tableExists(supabase: any, tableName: string): Promise<boolean> {
 
 // Initialize messaging schema and tables if they don't exist
 export async function initializeMessagingSchema(): Promise<boolean> {
-  const supabase = createClient();
-  
   try {
     // Check if the messages table exists
-    const messagesTableExists = await tableExists(supabase, 'messages');
+    const messagesTableExists = await tableExists('messages');
     
     if (!messagesTableExists) {
       console.log('messages table does not exist');
@@ -129,8 +127,6 @@ export async function getMessages(
   timestamp: string;
   isOwn: boolean;
 }>> {
-  const supabase = createClient();
-  
   try {
     // Get the current user ID
     const { data: { session } } = await supabase.auth.getSession();
@@ -194,8 +190,6 @@ export async function getContractorsForProject(
   status: 'pending' | 'accepted' | 'rejected';
   avatar?: string | undefined;
 }>> {
-  const supabase = createClient();
-  
   try {
     // Get the current user ID
     const { data: { session } } = await supabase.auth.getSession();
@@ -316,8 +310,6 @@ export async function sendMessage(
   content: string,
   files?: File[]
 ): Promise<boolean> {
-  const supabase = createClient();
-  
   try {
     // Get the current user ID
     const { data: { session } } = await supabase.auth.getSession();
@@ -415,8 +407,6 @@ export async function sendMessage(
  * Get the homeowner for a project
  */
 export async function getHomeownerForProject(projectId: string): Promise<string | null> {
-  const supabase = createClient();
-  
   try {
     // Get the current user ID
     const { data: { session } } = await supabase.auth.getSession();
@@ -481,8 +471,6 @@ export function subscribeToMessages(
     isOwn: boolean;
   }) => void
 ): () => void {
-  const supabase = createClient();
-  
   // Clean the project ID
   const cleanedProjectId = cleanProjectId(projectId);
   
@@ -546,8 +534,6 @@ export async function getMessageById(messageId: string): Promise<{
     fileSize: number;
   }>;
 } | null> {
-  const supabase = createClient();
-  
   try {
     // Get the message
     const { data: message, error } = await supabase

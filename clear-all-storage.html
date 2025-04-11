@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear All Project Storage</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            cursor: pointer;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #cc0000;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 300px;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+        .warning {
+            color: orange;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Clear All Project Storage</h1>
+    
+    <div>
+        <h2>Current localStorage Contents:</h2>
+        <pre id="storage-contents"></pre>
+    </div>
+    
+    <button id="clear-specific">Clear All Project-Related Keys</button>
+    <button id="clear-all">Clear ALL localStorage (Nuclear Option)</button>
+    
+    <h2>Results:</h2>
+    <pre id="results"></pre>
+    
+    <script>
+        // Display all localStorage contents
+        function displayStorageContents() {
+            const storageEl = document.getElementById('storage-contents');
+            const contents = {};
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                try {
+                    // Try to parse as JSON for better display
+                    contents[key] = JSON.parse(localStorage.getItem(key));
+                } catch (e) {
+                    // If not JSON, store as is
+                    contents[key] = localStorage.getItem(key);
+                }
+            }
+            
+            storageEl.textContent = JSON.stringify(contents, null, 2);
+        }
+        
+        // Clear specific project-related keys
+        function clearProjectKeys() {
+            const resultsEl = document.getElementById('results');
+            resultsEl.textContent = '';
+            
+            // List of potential project-related keys
+            const keysToCheck = [
+                'mock_projects',
+                'projects',
+                'instabids_projects',
+                'project_data',
+                'cached_projects',
+                'projectsCache',
+                '_projects',
+                'instabids-projects',
+                'instabids.projects',
+                'project-cache',
+                'project_list',
+                'projectsList'
+            ];
+            
+            let cleared = 0;
+            let log = '';
+            
+            // Check each key
+            keysToCheck.forEach(key => {
+                if (localStorage.getItem(key) !== null) {
+                    log += `✅ Found and cleared: "${key}"\n`;
+                    localStorage.removeItem(key);
+                    cleared++;
+                }
+            });
+            
+            // Look for any keys containing "project"
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.toLowerCase().includes('project')) {
+                    log += `✅ Found and cleared project-related key: "${key}"\n`;
+                    localStorage.removeItem(key);
+                    cleared++;
+                    // Adjust the counter since we removed an item
+                    i--;
+                }
+            }
+            
+            if (cleared === 0) {
+                log += "⚠️ No project-related keys found in localStorage.\n";
+            } else {
+                log += `\n🎉 Cleared ${cleared} project-related keys from localStorage.\n`;
+            }
+            
+            log += "\nPlease refresh your InstaBids application now.";
+            resultsEl.textContent = log;
+            
+            // Refresh the display
+            displayStorageContents();
+        }
+        
+        // Clear ALL localStorage
+        function clearAllStorage() {
+            const resultsEl = document.getElementById('results');
+            
+            if (confirm("⚠️ WARNING: This will clear ALL localStorage data, including settings, preferences, and non-project data. Are you sure?")) {
+                const itemCount = localStorage.length;
+                localStorage.clear();
+                resultsEl.textContent = `🧨 Nuclear option executed! Cleared all ${itemCount} items from localStorage.\n\nPlease refresh your InstaBids application now.`;
+                
+                // Refresh the display
+                displayStorageContents();
+            } else {
+                resultsEl.textContent = "Operation cancelled.";
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            displayStorageContents();
+            
+            document.getElementById('clear-specific').addEventListener('click', clearProjectKeys);
+            document.getElementById('clear-all').addEventListener('click', clearAllStorage);
+        });
+    </script>
+</body>
+</html>

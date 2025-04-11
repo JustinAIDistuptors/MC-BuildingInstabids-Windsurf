@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import ProjectCard from "@/components/projects/ProjectCard";
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client directly
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 // Status badge component
 const StatusBadge = ({ status }: { status: string }) => {
@@ -41,35 +48,84 @@ export default function HomeownerDashboard() {
     bidReceived: 0,
     projectsCompleted: 0
   });
+  const [loading, setLoading] = useState(true);
   
-  // Load projects from localStorage
   useEffect(() => {
-    const localProjectsString = localStorage.getItem('mock_projects');
-    const localProjects = localProjectsString ? JSON.parse(localProjectsString) : [];
+    const loadProjects = async () => {
+      try {
+        setLoading(true);
+        console.log('Dashboard: Loading projects from Supabase...');
+        
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('Dashboard: Error loading projects from Supabase:', error);
+          setProjects([]);
+        } else {
+          console.log('Dashboard: Projects loaded from Supabase:', data);
+          setProjects(data || []);
+          
+          // Calculate stats
+          const activeCount = data?.filter((p: any) => 
+            p.status === 'published' && p.bid_status !== 'completed'
+          ).length || 0;
+          
+          // Simulate bid counts - in a real app this would come from the API
+          const totalBids = data?.reduce((acc: number, p: any) => 
+            p.status === 'accepting_bids' ? acc + (p.bid_count || 0) : acc
+          , 0) || 0;
+          
+          const completedCount = data?.filter((p: any) => 
+            p.bid_status === "completed"
+          ).length || 0;
+          
+          setStats({
+            activeProjects: activeCount,
+            bidReceived: totalBids,
+            projectsCompleted: completedCount
+          });
+        }
+      } catch (error) {
+        console.error('Dashboard: Error loading projects:', error);
+        setProjects([]);
+      } finally {
+        setLoading(false);
+      }
+    };
     
-    // Set projects
-    setProjects(localProjects);
-    
-    // Calculate stats
-    const activeCount = localProjects.filter((p: any) => 
-      p.status === 'published' && p.bid_status !== 'completed'
-    ).length;
-    
-    // Simulate bid counts - in a real app this would come from the API
-    const totalBids = localProjects.reduce((acc: number, p: any) => 
-      p.bid_status === 'accepting_bids' ? acc + (p.bid_count || 4) : acc
-    , 0);
-    
-    const completedCount = localProjects.filter((p: any) => 
-      p.bid_status === 'completed'
-    ).length;
-    
-    setStats({
-      activeProjects: activeCount,
-      bidReceived: totalBids,
-      projectsCompleted: completedCount
-    });
+    loadProjects();
   }, []);
+  
+  // Handle deleting a project
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this project?')) {
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        console.error('Error deleting project from Supabase:', error);
+      } else {
+        // Update local state
+        setProjects(projects.filter(project => project.id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   // Filter projects based on active tab
   const filteredProjects = projects.filter((project: any) => {
@@ -130,7 +186,11 @@ export default function HomeownerDashboard() {
           </Link>
         </div>
         
-        {projects.length === 0 ? (
+        {loading ? (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
+          </div>
+        ) : projects.length === 0 ? (
           <div className="text-center py-12 bg-gray-50 rounded-lg">
             <h3 className="text-lg font-medium text-gray-900 mb-2">No projects yet</h3>
             <p className="text-gray-500 mb-4">
@@ -149,8 +209,10 @@ export default function HomeownerDashboard() {
                 key={project.id}
                 project={project}
                 linkToDetails={true}
-                showDeleteButton={false}
+                showDeleteButton={true}
+                onDelete={handleDelete}
                 className="h-full"
+                imageUrl={project.imageUrl || '/placeholder-project.jpg'}
               />
             ))}
           </div>
@@ -169,50 +231,15 @@ export default function HomeownerDashboard() {
         {/* Filtered Projects */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.map((project: any) => (
-            <div key={project.id} className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-              {/* Status Badge */}
-              <div className="p-2">
-                <StatusBadge status={project.bid_status || 'accepting_bids'} />
-              </div>
-              
-              {/* Project Image */}
-              <div className="h-40 bg-gray-200 flex items-center justify-center">
-                <svg className="w-12 h-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" fill="currentColor" viewBox="0 0 640 512">
-                  <path d="M480 80C480 35.82 515.8 0 560 0C604.2 0 640 35.82 640 80C640 124.2 604.2 160 560 160C515.8 160 480 124.2 480 80zM0 456.1C0 445.6 2.964 435.3 8.551 426.4L225.3 81.01C231.9 70.42 243.5 64 256 64C268.5 64 280.1 70.42 286.8 81.01L412.7 281.7L460.9 202.7C464.1 196.1 472.2 192 480 192C487.8 192 495 196.1 499.1 202.7L631.1 419.1C636.9 428.6 640 439.7 640 450.9C640 484.6 612.6 512 578.9 512H55.91C25.03 512 .0006 486.1 .0006 456.1L0 456.1z" />
-                </svg>
-              </div>
-              
-              {/* Project Content */}
-              <div className="p-4">
-                <h5 className="text-xl font-bold tracking-tight text-gray-900 mb-2">
-                  {project.title}
-                </h5>
-                <p className="font-normal text-gray-700 mb-3 line-clamp-2">
-                  {project.description}
-                </p>
-                
-                {/* Project Details */}
-                <div className="flex justify-between text-sm text-gray-600 mb-4">
-                  <div>${project.budget_min?.toLocaleString()} - ${project.budget_max?.toLocaleString()}</div>
-                  <div className="flex items-center">
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd"></path>
-                    </svg>
-                    {project.location?.city}, {project.location?.state}
-                  </div>
-                </div>
-                
-                {/* Action Button */}
-                <div className="flex justify-center">
-                  <Link 
-                    href={`/dashboard/homeowner/projects/${project.id}`}
-                    className="inline-flex items-center px-3 py-2 text-sm font-medium text-center text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-                  >
-                    View Details
-                  </Link>
-                </div>
-              </div>
-            </div>
+            <ProjectCard
+              key={project.id}
+              project={project}
+              linkToDetails={true}
+              showDeleteButton={true}
+              onDelete={handleDelete}
+              className="h-full"
+              imageUrl={project.imageUrl || '/placeholder-project.jpg'}
+            />
           ))}
         </div>
       </div>

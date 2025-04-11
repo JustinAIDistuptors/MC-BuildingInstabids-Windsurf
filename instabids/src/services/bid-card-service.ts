@@ -1,4 +1,11 @@
 import { BidCard } from "@/types/bidding";
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 /**
  * Service for handling bid card API interactions
@@ -25,17 +32,22 @@ export const BidCardService = {
         formData.append(`file-${index}`, file);
       });
       
-      const response = await fetch('/api/bid-cards', {
-        method: 'POST',
-        body: formData,
-      });
+      const { data, error } = await supabase
+        .from('bid_cards')
+        .insert([
+          {
+            ...bidCardData,
+            status: 'draft'
+          }
+        ])
+        .select('id');
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save draft');
+      if (error) {
+        console.error('Error saving draft:', error);
+        throw new Error('Failed to save draft');
       }
       
-      return await response.json();
+      return { id: data[0].id };
     } catch (error) {
       console.error('Error saving draft:', error);
       throw error;
@@ -63,17 +75,22 @@ export const BidCardService = {
         formData.append(`file-${index}`, file);
       });
       
-      const response = await fetch('/api/bid-cards', {
-        method: 'POST',
-        body: formData,
-      });
+      const { data, error } = await supabase
+        .from('bid_cards')
+        .insert([
+          {
+            ...bidCardData,
+            status: 'open'
+          }
+        ])
+        .select('id');
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to submit bid card');
+      if (error) {
+        console.error('Error submitting bid card:', error);
+        throw new Error('Failed to submit bid card');
       }
       
-      return await response.json();
+      return { id: data[0].id };
     } catch (error) {
       console.error('Error submitting bid card:', error);
       throw error;
@@ -85,21 +102,34 @@ export const BidCardService = {
    */
   getBidCard: async (id: string): Promise<{ bidCard: BidCard & { media: any[] } }> => {
     try {
-      // Use the mock API endpoint for development to ensure we always get data
-      const response = await fetch(`/api/mock-bid-cards/${id}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include', // Include cookies in the request
-      });
+      console.log('BidCardService.getBidCard: Fetching project with ID:', id);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get bid card');
+      // Use Supabase directly instead of the mock API
+      const { data, error } = await supabase
+        .from('bid_cards')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching project from Supabase:', error);
+        throw new Error('Failed to get project');
       }
       
-      return await response.json();
+      if (!data) {
+        console.error('Project not found in Supabase');
+        throw new Error('Project not found');
+      }
+      
+      console.log('BidCardService.getBidCard: Fetched from Supabase:', data);
+      
+      // Convert the Supabase data to the expected format
+      const bidCard = {
+        ...data,
+        media: data.media || []
+      };
+      
+      return { bidCard };
     } catch (error) {
       console.error('Error getting bid card:', error);
       throw error;
@@ -115,27 +145,22 @@ export const BidCardService = {
     mediaFiles: File[] = []
   ): Promise<{ id: string }> => {
     try {
-      const formData = new FormData();
+      const { data, error } = await supabase
+        .from('bid_cards')
+        .update([
+          {
+            ...bidCardData
+          }
+        ])
+        .eq('id', id)
+        .select('id');
       
-      // Add the bid card data as JSON
-      formData.append('data', JSON.stringify(bidCardData));
-      
-      // Add media files
-      mediaFiles.forEach((file, index) => {
-        formData.append(`file-${index}`, file);
-      });
-      
-      const response = await fetch(`/api/bid-cards/${id}`, {
-        method: 'PATCH',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update bid card');
+      if (error) {
+        console.error('Error updating bid card:', error);
+        throw new Error('Failed to update bid card');
       }
       
-      return await response.json();
+      return { id: data[0].id };
     } catch (error) {
       console.error('Error updating bid card:', error);
       throw error;
@@ -147,16 +172,17 @@ export const BidCardService = {
    */
   deleteBidCard: async (id: string): Promise<{ success: boolean }> => {
     try {
-      const response = await fetch(`/api/bid-cards/${id}`, {
-        method: 'DELETE',
-      });
+      const { error } = await supabase
+        .from('bid_cards')
+        .delete()
+        .eq('id', id);
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete bid card');
+      if (error) {
+        console.error('Error deleting bid card:', error);
+        throw new Error('Failed to delete bid card');
       }
       
-      return await response.json();
+      return { success: true };
     } catch (error) {
       console.error('Error deleting bid card:', error);
       throw error;
@@ -168,16 +194,16 @@ export const BidCardService = {
    */
   getUserBidCards: async (): Promise<{ bidCards: BidCard[] }> => {
     try {
-      const response = await fetch('/api/bid-cards', {
-        method: 'GET',
-      });
+      const { data, error } = await supabase
+        .from('bid_cards')
+        .select('*');
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to get bid cards');
+      if (error) {
+        console.error('Error getting bid cards:', error);
+        throw new Error('Failed to get bid cards');
       }
       
-      return await response.json();
+      return { bidCards: data };
     } catch (error) {
       console.error('Error getting bid cards:', error);
       throw error;

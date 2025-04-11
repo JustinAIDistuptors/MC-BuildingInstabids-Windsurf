@@ -5,8 +5,8 @@ const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const bodyParser = require('body-parser');
 
-// Configuration
-const PORT = 4567; // Random port as requested
+// Configuration with the provided credentials
+const PORT = 4567;
 const SUPABASE_URL = 'https://heqifyikpitzpwyasvop.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlcWlmeWlrcGl0enB3eWFzdm9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NjI3NjMsImV4cCI6MjA1OTQzODc2M30.5Ew9RyW6umw_xB-mubmcp30Qo9eWOQ8J4fuk8li7yzo';
 const SUPABASE_SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlcWlmeWlrcGl0enB3eWFzdm9wIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0Mzg2Mjc2MywiZXhwIjoyMDU5NDM4NzYzfQ.6bz0K2rUfI9IA3Ty4FCnCJrXZirgZJ3yF2YYzzcskME';
@@ -23,7 +23,7 @@ app.use(bodyParser.json());
 
 // Log all requests
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
@@ -34,166 +34,193 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     supabaseUrl: SUPABASE_URL,
     endpoints: [
-      '/execute-sql',
-      '/query-table',
-      '/create-table',
-      '/insert-data',
-      '/update-data',
-      '/delete-data',
-      '/execute-migration',
-      '/check-table-exists',
-      '/create-schema'
+      '/tables',
+      '/table/:tableName',
+      '/query',
+      '/insert',
+      '/update',
+      '/delete',
+      '/rpc/:functionName'
     ]
   });
 });
 
-// Execute raw SQL
-app.post('/execute-sql', async (req, res) => {
+// List all tables
+app.get('/tables', async (req, res) => {
   try {
-    const { sql, params } = req.body;
-    
-    if (!sql) {
-      return res.status(400).json({ error: 'SQL query is required' });
-    }
-    
-    const { data, error } = await supabase.rpc('exec_sql', {
-      sql_string: sql,
-      params: params || {}
-    });
+    // Information schema is not directly accessible via the Supabase client
+    // Use a raw query instead
+    const { data, error } = await supabase.rpc('list_tables');
     
     if (error) {
-      return res.status(500).json({ error: error.message });
+      // If RPC function doesn't exist, try a direct query
+      console.error('Error using RPC function, trying direct query:', error);
+      
+      // Try to query using the REST API
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/?apikey=${SUPABASE_SERVICE_ROLE_KEY}`);
+      if (!response.ok) {
+        throw new Error(`Failed to get tables: ${response.statusText}`);
+      }
+      
+      const tables = await response.json();
+      console.log(`Found ${tables.length} tables via REST API`);
+      return res.json({ tables: tables.map(t => t.name) });
     }
     
-    res.json({ result: data });
+    console.log(`Found ${data.length} tables via RPC`);
+    res.json({ tables: data });
   } catch (error) {
-    console.error('Error executing SQL:', error);
+    console.error('Error listing tables:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Query a table
-app.post('/query-table', async (req, res) => {
+// Get table structure
+app.get('/table/:tableName', async (req, res) => {
   try {
-    const { table, select, filters, order, limit, offset } = req.body;
+    const { tableName } = req.params;
+    
+    // Create a describe_table function call
+    const { data, error } = await supabase.rpc('describe_table', { 
+      table_name: tableName 
+    });
+    
+    if (error) {
+      console.error(`Error getting structure for table ${tableName}:`, error);
+      
+      // Try to get table structure using a direct query to the table
+      try {
+        // Query a single row to get column names
+        const { data: sampleData, error: sampleError } = await supabase
+          .from(tableName)
+          .select('*')
+          .limit(1);
+          
+        if (sampleError) {
+          return res.status(500).json({ error: sampleError.message });
+        }
+        
+        if (sampleData && sampleData.length > 0) {
+          // Extract column names from the sample data
+          const columns = Object.keys(sampleData[0]).map(column_name => ({
+            column_name,
+            data_type: typeof sampleData[0][column_name],
+            is_nullable: 'UNKNOWN',
+            column_default: null
+          }));
+          
+          console.log(`Retrieved structure for table ${tableName} via sample data`);
+          return res.json({ columns });
+        } else {
+          // Table exists but is empty, try to get columns from an empty select
+          const { error: emptyError } = await supabase
+            .from(tableName)
+            .select();
+            
+          if (emptyError) {
+            return res.status(500).json({ error: emptyError.message });
+          }
+          
+          console.log(`Table ${tableName} exists but couldn't determine structure`);
+          return res.json({ columns: [], message: 'Table exists but structure could not be determined' });
+        }
+      } catch (directError) {
+        console.error(`Error with direct query for table ${tableName}:`, directError);
+        return res.status(500).json({ error: directError.message });
+      }
+    }
+    
+    console.log(`Retrieved structure for table ${tableName}`);
+    res.json({ columns: data });
+  } catch (error) {
+    console.error('Error getting table structure:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Query data
+app.post('/query', async (req, res) => {
+  try {
+    const { table, select = '*', filters = {}, limit = 100, offset = 0, order } = req.body;
     
     if (!table) {
       return res.status(400).json({ error: 'Table name is required' });
     }
     
-    let query = supabase.from(table).select(select || '*');
+    console.log(`Querying table '${table}'`);
+    
+    // Build the query
+    let query = supabase
+      .from(table)
+      .select(select)
+      .limit(limit)
+      .range(offset, offset + limit - 1);
     
     // Apply filters
-    if (filters) {
-      Object.entries(filters).forEach(([column, value]) => {
-        if (typeof value === 'object' && value !== null) {
-          // Handle operators like gt, lt, etc.
-          const [operator, operand] = Object.entries(value)[0];
-          query = query.filter(column, operator, operand);
-        } else {
-          // Simple equality
-          query = query.eq(column, value);
+    Object.entries(filters).forEach(([column, value]) => {
+      if (typeof value === 'object' && value !== null) {
+        // Handle operators like gt, lt, etc.
+        const operator = Object.keys(value)[0];
+        const operand = value[operator];
+        
+        switch (operator) {
+          case 'gt':
+            query = query.gt(column, operand);
+            break;
+          case 'gte':
+            query = query.gte(column, operand);
+            break;
+          case 'lt':
+            query = query.lt(column, operand);
+            break;
+          case 'lte':
+            query = query.lte(column, operand);
+            break;
+          case 'neq':
+            query = query.neq(column, operand);
+            break;
+          case 'like':
+            query = query.like(column, operand);
+            break;
+          case 'ilike':
+            query = query.ilike(column, operand);
+            break;
+          case 'in':
+            query = query.in(column, operand);
+            break;
+          default:
+            console.warn(`Unsupported operator: ${operator}`);
         }
-      });
-    }
+      } else {
+        // Simple equality
+        query = query.eq(column, value);
+      }
+    });
     
     // Apply ordering
     if (order) {
-      const { column, ascending } = order;
-      query = query.order(column, { ascending: ascending !== false });
+      const { column, ascending = true } = order;
+      query = query.order(column, { ascending });
     }
     
-    // Apply pagination
-    if (limit) {
-      query = query.limit(limit);
-    }
-    
-    if (offset) {
-      query = query.offset(offset);
-    }
-    
+    // Execute the query
     const { data, error, count } = await query;
     
     if (error) {
+      console.error('Query error:', error);
       return res.status(500).json({ error: error.message });
     }
     
+    console.log(`Query successful, returned ${data.length} rows`);
     res.json({ data, count });
   } catch (error) {
-    console.error('Error querying table:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Create a table
-app.post('/create-table', async (req, res) => {
-  try {
-    const { table, schema } = req.body;
-    
-    if (!table || !schema) {
-      return res.status(400).json({ error: 'Table name and schema are required' });
-    }
-    
-    // Generate SQL for table creation
-    let sql = `CREATE TABLE IF NOT EXISTS ${table} (\n`;
-    
-    // Add columns
-    const columns = Object.entries(schema.columns).map(([name, def]) => {
-      return `  ${name} ${def}`;
-    });
-    
-    sql += columns.join(',\n');
-    
-    // Add primary key
-    if (schema.primaryKey) {
-      if (Array.isArray(schema.primaryKey)) {
-        sql += `,\n  PRIMARY KEY (${schema.primaryKey.join(', ')})`;
-      } else {
-        sql += `,\n  PRIMARY KEY (${schema.primaryKey})`;
-      }
-    }
-    
-    // Add foreign keys
-    if (schema.foreignKeys) {
-      schema.foreignKeys.forEach(fk => {
-        sql += `,\n  FOREIGN KEY (${fk.column}) REFERENCES ${fk.references}(${fk.referencedColumn})`;
-        if (fk.onDelete) {
-          sql += ` ON DELETE ${fk.onDelete}`;
-        }
-        if (fk.onUpdate) {
-          sql += ` ON UPDATE ${fk.onUpdate}`;
-        }
-      });
-    }
-    
-    // Close the statement
-    sql += '\n);';
-    
-    // Add indexes
-    if (schema.indexes) {
-      schema.indexes.forEach(index => {
-        sql += `\nCREATE INDEX IF NOT EXISTS idx_${table}_${index.columns.join('_')} ON ${table}(${index.columns.join(', ')});`;
-      });
-    }
-    
-    // Execute the SQL
-    const { data, error } = await supabase.rpc('exec_sql', {
-      sql_string: sql
-    });
-    
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-    
-    res.json({ success: true, message: `Table ${table} created successfully` });
-  } catch (error) {
-    console.error('Error creating table:', error);
+    console.error('Error querying data:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Insert data
-app.post('/insert-data', async (req, res) => {
+app.post('/insert', async (req, res) => {
   try {
     const { table, data } = req.body;
     
@@ -201,16 +228,20 @@ app.post('/insert-data', async (req, res) => {
       return res.status(400).json({ error: 'Table name and data are required' });
     }
     
+    console.log(`Inserting data into table '${table}'`);
+    
     const { data: result, error } = await supabase
       .from(table)
       .insert(data)
       .select();
     
     if (error) {
+      console.error('Error inserting data:', error);
       return res.status(500).json({ error: error.message });
     }
     
-    res.json({ success: true, data: result });
+    console.log(`Data inserted successfully into table '${table}'`);
+    res.json({ data: result });
   } catch (error) {
     console.error('Error inserting data:', error);
     res.status(500).json({ error: error.message });
@@ -218,14 +249,17 @@ app.post('/insert-data', async (req, res) => {
 });
 
 // Update data
-app.post('/update-data', async (req, res) => {
+app.post('/update', async (req, res) => {
   try {
     const { table, data, match } = req.body;
     
     if (!table || !data || !match) {
-      return res.status(400).json({ error: 'Table name, data, and match condition are required' });
+      return res.status(400).json({ error: 'Table name, data, and match conditions are required' });
     }
     
+    console.log(`Updating data in table '${table}'`);
+    
+    // Build the update query
     let query = supabase.from(table).update(data);
     
     // Apply match conditions
@@ -233,13 +267,16 @@ app.post('/update-data', async (req, res) => {
       query = query.eq(column, value);
     });
     
+    // Execute the query
     const { data: result, error } = await query.select();
     
     if (error) {
+      console.error('Error updating data:', error);
       return res.status(500).json({ error: error.message });
     }
     
-    res.json({ success: true, data: result });
+    console.log(`Data updated successfully in table '${table}'`);
+    res.json({ data: result });
   } catch (error) {
     console.error('Error updating data:', error);
     res.status(500).json({ error: error.message });
@@ -247,14 +284,17 @@ app.post('/update-data', async (req, res) => {
 });
 
 // Delete data
-app.post('/delete-data', async (req, res) => {
+app.post('/delete', async (req, res) => {
   try {
     const { table, match } = req.body;
     
     if (!table || !match) {
-      return res.status(400).json({ error: 'Table name and match condition are required' });
+      return res.status(400).json({ error: 'Table name and match conditions are required' });
     }
     
+    console.log(`Deleting data from table '${table}'`);
+    
+    // Build the delete query
     let query = supabase.from(table).delete();
     
     // Apply match conditions
@@ -262,117 +302,41 @@ app.post('/delete-data', async (req, res) => {
       query = query.eq(column, value);
     });
     
+    // Execute the query
     const { data, error } = await query;
     
     if (error) {
+      console.error('Error deleting data:', error);
       return res.status(500).json({ error: error.message });
     }
     
-    res.json({ success: true, message: 'Data deleted successfully' });
+    console.log(`Data deleted successfully from table '${table}'`);
+    res.json({ success: true });
   } catch (error) {
     console.error('Error deleting data:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Execute a migration script
-app.post('/execute-migration', async (req, res) => {
+// Call RPC function
+app.post('/rpc/:functionName', async (req, res) => {
   try {
-    const { sql } = req.body;
+    const { functionName } = req.params;
+    const params = req.body;
     
-    if (!sql) {
-      return res.status(400).json({ error: 'SQL migration script is required' });
-    }
+    console.log(`Calling RPC function '${functionName}'`);
     
-    // Split the SQL into statements
-    const statements = sql
-      .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0);
-    
-    const results = [];
-    
-    // Execute each statement
-    for (const statement of statements) {
-      const { data, error } = await supabase.rpc('exec_sql', {
-        sql_string: statement + ';'
-      });
-      
-      if (error) {
-        results.push({ statement, success: false, error: error.message });
-      } else {
-        results.push({ statement, success: true });
-      }
-    }
-    
-    res.json({ success: true, results });
-  } catch (error) {
-    console.error('Error executing migration:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Check if a table exists
-app.post('/check-table-exists', async (req, res) => {
-  try {
-    const { table } = req.body;
-    
-    if (!table) {
-      return res.status(400).json({ error: 'Table name is required' });
-    }
-    
-    // Split schema and table name
-    const parts = table.split('.');
-    const schemaName = parts.length > 1 ? parts[0] : 'public';
-    const tableName = parts.length > 1 ? parts[1] : parts[0];
-    
-    const sql = `
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables 
-        WHERE table_schema = '${schemaName}'
-        AND table_name = '${tableName}'
-      );
-    `;
-    
-    const { data, error } = await supabase.rpc('exec_sql', {
-      sql_string: sql
-    });
+    const { data, error } = await supabase.rpc(functionName, params);
     
     if (error) {
+      console.error(`Error calling RPC function '${functionName}':`, error);
       return res.status(500).json({ error: error.message });
     }
     
-    const exists = data && data[0] && data[0].exists;
-    
-    res.json({ exists });
+    console.log(`RPC function '${functionName}' called successfully`);
+    res.json({ data });
   } catch (error) {
-    console.error('Error checking if table exists:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Create a schema
-app.post('/create-schema', async (req, res) => {
-  try {
-    const { schema } = req.body;
-    
-    if (!schema) {
-      return res.status(400).json({ error: 'Schema name is required' });
-    }
-    
-    const sql = `CREATE SCHEMA IF NOT EXISTS ${schema};`;
-    
-    const { data, error } = await supabase.rpc('exec_sql', {
-      sql_string: sql
-    });
-    
-    if (error) {
-      return res.status(500).json({ error: error.message });
-    }
-    
-    res.json({ success: true, message: `Schema ${schema} created successfully` });
-  } catch (error) {
-    console.error('Error creating schema:', error);
+    console.error('Error calling RPC function:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -380,11 +344,15 @@ app.post('/create-schema', async (req, res) => {
 // Start the server
 app.listen(PORT, () => {
   console.log(`Supabase MCP Server running at http://localhost:${PORT}/`);
-  console.log('Supabase URL:', SUPABASE_URL);
+  console.log(`Connected to Supabase URL: ${SUPABASE_URL}`);
+  console.log('Server is ready to accept connections');
 });
 
-// Handle process termination
-process.on('SIGINT', () => {
-  console.log('Shutting down Supabase MCP Server');
-  process.exit(0);
+// Handle errors to prevent crashes
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

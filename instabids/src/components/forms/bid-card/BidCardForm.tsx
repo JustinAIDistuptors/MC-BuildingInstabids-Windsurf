@@ -298,12 +298,79 @@ export default function BidCardForm() {
     // Show success screen
     setIsSubmitted(true);
     
-    // Store in localStorage for dashboard access
+    // Generate a unique ID for the project
+    const projectId = `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create a properly formatted project object
+    const newProject = {
+      id: projectId,
+      title: data.title || 'Untitled Project',
+      description: data.description || 'No description provided',
+      status: 'accepting_bids',
+      budget_min: data.job_size === 'small' ? 1000 : data.job_size === 'medium' ? 5000 : 10000,
+      budget_max: data.job_size === 'small' ? 5000 : data.job_size === 'medium' ? 15000 : 30000,
+      location: data.location?.city && data.location?.state ? 
+        `${data.location.city}, ${data.location.state} ${data.location.zip_code || ''}` : 
+        data.zip_code || 'Not specified',
+      type: data.job_type_id === 'renovation' ? 'Renovation' : 
+            data.job_type_id === 'new_construction' ? 'New Construction' : 
+            data.job_type_id === 'repair' ? 'Repair' : 'One-Time',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Store in localStorage properly by adding to the existing projects array
     try {
-      localStorage.setItem('lastSubmittedProject', JSON.stringify({
-        data,
-        submittedAt: new Date().toISOString()
-      }));
+      // Get existing projects
+      const existingProjectsStr = localStorage.getItem('mock_projects');
+      let existingProjects = [];
+      
+      if (existingProjectsStr) {
+        try {
+          existingProjects = JSON.parse(existingProjectsStr);
+          // Ensure it's an array
+          if (!Array.isArray(existingProjects)) {
+            existingProjects = [];
+          }
+        } catch (e) {
+          console.error('Error parsing existing projects:', e);
+          existingProjects = [];
+        }
+      }
+      
+      // Add the new project
+      existingProjects.push(newProject);
+      
+      // Save back to localStorage
+      localStorage.setItem('mock_projects', JSON.stringify(existingProjects));
+      
+      // Show notification
+      if (typeof window !== 'undefined') {
+        // Create and show toast notification
+        const toast = document.createElement('div');
+        toast.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
+        toast.innerHTML = `
+          <div class="flex">
+            <div class="py-1"><svg class="h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg></div>
+            <div>
+              <p class="font-bold">Project Added</p>
+              <p class="text-sm">Your project has been added to your dashboard.</p>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(toast);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 5000);
+      }
+      
+      console.log('Project saved to localStorage:', newProject);
     } catch (error) {
       console.error('Failed to save project to localStorage:', error);
     }

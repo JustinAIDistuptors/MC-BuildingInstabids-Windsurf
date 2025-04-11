@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Fix Tool</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        button {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+        button:hover {
+            background-color: #d32f2f;
+        }
+        .success {
+            color: #4caf50;
+            background-color: #e8f5e9;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #f44336;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 300px;
+        }
+        .project {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .project-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .project-title {
+            font-weight: bold;
+            margin: 0;
+        }
+        .project-id {
+            color: #666;
+            font-size: 0.8em;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Direct Fix Tool</h1>
+    <p>This tool directly manipulates localStorage without any framework dependencies.</p>
+    
+    <div id="message"></div>
+    
+    <div>
+        <h2>Projects in localStorage</h2>
+        <div id="projects-container"></div>
+        <button id="reset-projects">Reset Projects to Empty Array</button>
+        <button id="clear-all">Clear ALL localStorage</button>
+    </div>
+    
+    <div>
+        <h2>All localStorage Keys</h2>
+        <div id="storage-keys"></div>
+    </div>
+    
+    <script>
+        // Display message
+        function showMessage(text, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.className = type;
+            messageEl.textContent = text;
+        }
+        
+        // Display projects
+        function displayProjects() {
+            const container = document.getElementById('projects-container');
+            container.innerHTML = '';
+            
+            try {
+                const projectsStr = localStorage.getItem('mock_projects');
+                if (!projectsStr) {
+                    container.innerHTML = '<p>No projects found in localStorage</p>';
+                    return;
+                }
+                
+                const projects = JSON.parse(projectsStr);
+                if (!projects.length) {
+                    container.innerHTML = '<p>No projects found in localStorage</p>';
+                    return;
+                }
+                
+                projects.forEach(project => {
+                    const projectEl = document.createElement('div');
+                    projectEl.className = 'project';
+                    
+                    const header = document.createElement('div');
+                    header.className = 'project-header';
+                    
+                    const title = document.createElement('h3');
+                    title.className = 'project-title';
+                    title.textContent = project.title || 'Untitled Project';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'Delete';
+                    deleteBtn.onclick = () => deleteProject(project.id);
+                    
+                    header.appendChild(title);
+                    header.appendChild(deleteBtn);
+                    
+                    const id = document.createElement('p');
+                    id.className = 'project-id';
+                    id.textContent = `ID: ${project.id}`;
+                    
+                    projectEl.appendChild(header);
+                    projectEl.appendChild(id);
+                    
+                    container.appendChild(projectEl);
+                });
+            } catch (error) {
+                container.innerHTML = `<p class="error">Error loading projects: ${error.message}</p>`;
+            }
+        }
+        
+        // Display localStorage keys
+        function displayStorageKeys() {
+            const container = document.getElementById('storage-keys');
+            container.innerHTML = '';
+            
+            if (!localStorage.length) {
+                container.innerHTML = '<p>No items in localStorage</p>';
+                return;
+            }
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key) continue;
+                
+                const keyEl = document.createElement('div');
+                keyEl.className = 'project';
+                
+                const header = document.createElement('div');
+                header.className = 'project-header';
+                
+                const keyName = document.createElement('h3');
+                keyName.className = 'project-title';
+                keyName.textContent = key;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = () => {
+                    localStorage.removeItem(key);
+                    showMessage(`Key "${key}" removed from localStorage`, 'success');
+                    displayStorageKeys();
+                };
+                
+                header.appendChild(keyName);
+                header.appendChild(deleteBtn);
+                
+                let value;
+                try {
+                    value = JSON.parse(localStorage.getItem(key) || '');
+                    value = JSON.stringify(value, null, 2);
+                } catch {
+                    value = localStorage.getItem(key);
+                }
+                
+                const valueEl = document.createElement('pre');
+                valueEl.textContent = value;
+                
+                keyEl.appendChild(header);
+                keyEl.appendChild(valueEl);
+                
+                container.appendChild(keyEl);
+            }
+        }
+        
+        // Delete project
+        function deleteProject(id) {
+            try {
+                const projectsStr = localStorage.getItem('mock_projects');
+                if (!projectsStr) {
+                    showMessage('No projects found in localStorage', 'error');
+                    return;
+                }
+                
+                const projects = JSON.parse(projectsStr);
+                const index = projects.findIndex(p => p.id === id);
+                
+                if (index === -1) {
+                    showMessage(`Project with ID "${id}" not found`, 'error');
+                    return;
+                }
+                
+                projects.splice(index, 1);
+                localStorage.setItem('mock_projects', JSON.stringify(projects));
+                
+                showMessage(`Project with ID "${id}" deleted successfully`, 'success');
+                displayProjects();
+            } catch (error) {
+                showMessage(`Error deleting project: ${error.message}`, 'error');
+            }
+        }
+        
+        // Reset projects
+        document.getElementById('reset-projects').addEventListener('click', () => {
+            if (confirm('Are you sure you want to reset all projects? This cannot be undone.')) {
+                localStorage.setItem('mock_projects', '[]');
+                showMessage('Projects reset to empty array', 'success');
+                displayProjects();
+                displayStorageKeys();
+            }
+        });
+        
+        // Clear all localStorage
+        document.getElementById('clear-all').addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear ALL localStorage? This cannot be undone.')) {
+                localStorage.clear();
+                showMessage('All localStorage data cleared', 'success');
+                displayProjects();
+                displayStorageKeys();
+            }
+        });
+        
+        // Initialize
+        displayProjects();
+        displayStorageKeys();
+    </script>
+</body>
+</html>

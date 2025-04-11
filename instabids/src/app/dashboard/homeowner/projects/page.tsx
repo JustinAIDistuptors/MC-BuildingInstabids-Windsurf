@@ -1,443 +1,275 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createClient } from '@supabase/supabase-js';
 import { toast } from '@/components/ui/use-toast';
-import { Toaster } from '@/components/ui/toaster';
-import { Card } from '@/components/ui/card';
-import ProjectCard, { formatLocation } from '@/components/projects/ProjectCard';
+import Link from 'next/link';
+import Image from 'next/image';
 
-// Mock data for projects
-const MOCK_PROJECTS = [
-  {
-    id: '1',
-    title: 'Kitchen Renovation',
-    description: 'Complete kitchen remodel including new cabinets, countertops, and appliances.',
-    status: 'active',
-    bids: 3,
-    budget: '$15,000 - $25,000',
-    timeline: 'May 2023 - July 2023',
-    location: 'Austin, TX',
-    type: 'one-time',
-    size: 'large',
-    hasMedia: true,
-    createdAt: '2023-04-15T10:30:00Z',
-  },
-  {
-    id: '2',
-    title: 'Bathroom Remodel',
-    description: 'Update master bathroom with new shower, vanity, and fixtures.',
-    status: 'active',
-    bids: 2,
-    budget: '$8,000 - $12,000',
-    timeline: 'June 2023 - July 2023',
-    location: 'Austin, TX',
-    type: 'one-time',
-    size: 'medium',
-    hasMedia: false,
-    createdAt: '2023-04-20T14:45:00Z',
-  },
-  {
-    id: '3',
-    title: 'Lawn Maintenance',
-    description: 'Regular lawn mowing, edging, and garden maintenance.',
-    status: 'completed',
-    bids: 5,
-    budget: '$150 - $200 per month',
-    timeline: 'Ongoing',
-    location: 'Austin, TX',
-    type: 'continual',
-    size: 'small',
-    hasMedia: true,
-    createdAt: '2023-03-10T09:15:00Z',
-  },
-  {
-    id: '4',
-    title: 'Fence Installation',
-    description: 'Install new wooden privacy fence around backyard.',
-    status: 'completed',
-    bids: 4,
-    budget: '$3,000 - $5,000',
-    timeline: 'April 2023',
-    location: 'Austin, TX',
-    type: 'one-time',
-    size: 'medium',
-    hasMedia: false,
-    createdAt: '2023-02-28T11:20:00Z',
-  },
-  {
-    id: '5',
-    title: 'Roof Repair',
-    description: 'Fix leaking roof and replace damaged shingles.',
-    status: 'archived',
-    bids: 0,
-    budget: '$1,000 - $3,000',
-    timeline: 'March 2023',
-    location: 'Austin, TX',
-    type: 'repair',
-    size: 'small',
-    hasMedia: true,
-    createdAt: '2023-02-15T16:30:00Z',
-  },
-];
-
-// Empty state component
-const EmptyState = ({ onCreateProject }: { onCreateProject: () => void }) => (
-  <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-    <div className="mb-4">
-      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    </div>
-    <h3 className="text-lg font-medium text-gray-900 mb-2">No projects found</h3>
-    <p className="text-gray-500 mb-6 max-w-md mx-auto">
-      Get started by creating a new project.
-    </p>
-    <div className="mt-6">
-      <Button onClick={onCreateProject} className="bg-blue-600 hover:bg-blue-700">
-        Create a Project
-      </Button>
-    </div>
-  </div>
+// Initialize Supabase client directly
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
+// Simple Project type
+interface Project {
+  id: string;
+  title: string;
+  description?: string;
+  status: string;
+  budget_min?: number;
+  budget_max?: number;
+  location?: string;
+  type?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export default function ProjectsPage() {
-  const [bidCards, setBidCards] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('active');
   const router = useRouter();
 
-  // Fetch bid cards from localStorage when the component mounts
+  // Load projects directly from Supabase
   useEffect(() => {
-    function fetchLocalProjects() {
+    async function loadProjects() {
+      setLoading(true);
       try {
-        setLoading(true);
+        console.log('Loading projects from Supabase...');
         
-        // Get projects from localStorage
-        const localProjectsString = localStorage.getItem('mock_projects');
-        let localProjects = localProjectsString ? JSON.parse(localProjectsString) : [];
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*');
         
-        // Check for lastSubmittedProject from BidCardForm
-        const lastSubmittedProjectString = localStorage.getItem('lastSubmittedProject');
-        if (lastSubmittedProjectString) {
-          try {
-            const lastSubmittedProject = JSON.parse(lastSubmittedProjectString);
-            
-            // Create a project object from the submitted data
-            const newProject = {
-              id: `project-${Date.now()}`,
-              title: lastSubmittedProject.data.title || 'New Project',
-              description: lastSubmittedProject.data.description || 'No description provided',
-              job_type_id: lastSubmittedProject.data.job_type_id || 'other',
-              job_category_id: lastSubmittedProject.data.job_category_id || 'other',
-              status: 'published',
-              bid_status: 'accepting_bids',
-              budget_min: lastSubmittedProject.data.budget_min || null,
-              budget_max: lastSubmittedProject.data.budget_max || null,
-              location: lastSubmittedProject.data.location || {
-                address_line1: 'Not specified',
-                city: 'Not specified',
-                state: 'Not specified',
-                zip_code: lastSubmittedProject.data.zip_code || 'Not specified'
-              },
-              zip_code: lastSubmittedProject.data.zip_code || 'Not specified',
-              created_at: lastSubmittedProject.submittedAt || new Date().toISOString(),
-              job_size: lastSubmittedProject.data.job_size || 'medium',
-              group_bidding_enabled: lastSubmittedProject.data.group_bidding_enabled || false,
-              hasMedia: true // Flag to indicate this project has media files
-            };
-            
-            // Check if this project already exists in localProjects
-            const projectExists = localProjects.some((project: any) => 
-              project.created_at === newProject.created_at && 
-              project.title === newProject.title
-            );
-            
-            if (!projectExists) {
-              // Add the new project to the beginning of the array
-              localProjects = [newProject, ...localProjects];
-              
-              // Save updated projects back to localStorage
-              localStorage.setItem('mock_projects', JSON.stringify(localProjects));
-              
-              // Show success toast
-              toast({
-                title: 'Project Added',
-                description: 'Your recently submitted project has been added to your dashboard.',
-              });
-            }
-          } catch (error) {
-            console.error('Error processing last submitted project:', error);
-          }
-        }
-        
-        // Add sample projects if none exist
-        if (localProjects.length === 0) {
-          const sampleProjects = [
-            {
-              id: 'sample-1',
-              title: 'Kitchen Renovation',
-              description: 'Modernize kitchen with new cabinets, countertops, and appliances.',
-              job_type_id: 'renovation',
-              job_category_id: 'kitchen',
-              status: 'published',
-              bid_status: 'accepting_bids',
-              budget_min: 10000,
-              budget_max: 15000,
-              location: {
-                address_line1: '123 Main St',
-                city: 'Miami',
-                state: 'FL',
-                zip_code: '33101'
-              },
-              zip_code: '33101',
-              created_at: new Date().toISOString()
-            },
-            {
-              id: 'sample-2',
-              title: 'Deck Construction',
-              description: 'Build a 400 sq ft wooden deck in the backyard.',
-              job_type_id: 'construction',
-              job_category_id: 'outdoor',
-              status: 'published',
-              bid_status: 'in_progress',
-              budget_min: 7000,
-              budget_max: 9000,
-              location: {
-                address_line1: '456 Palm Ave',
-                city: 'Miami',
-                state: 'FL',
-                zip_code: '33101'
-              },
-              zip_code: '33101',
-              created_at: new Date().toISOString()
-            }
-          ];
-          
-          localStorage.setItem('mock_projects', JSON.stringify(sampleProjects));
-          setBidCards(sampleProjects);
+        if (error) {
+          console.error('Error loading projects from Supabase:', error);
+          setProjects([]);
         } else {
-          setBidCards(localProjects);
+          console.log('Projects loaded from Supabase:', data);
+          setProjects(data || []);
         }
       } catch (error) {
-        console.error('Error fetching local projects:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load your projects from local storage.',
-          variant: 'destructive',
-        });
+        console.error('Error loading projects:', error);
+        setProjects([]);
       } finally {
         setLoading(false);
       }
     }
-
-    fetchLocalProjects();
+    
+    loadProjects();
   }, []);
 
-  // Handle deleting a bid card
-  const handleDelete = (id: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) {
+  // Create a new project
+  const handleCreateProject = () => {
+    router.push('/dashboard/homeowner/new-project');
+  };
+
+  // Delete a project directly from Supabase
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this project?')) {
       return;
     }
-
+    
     try {
-      // Get current projects
-      const localProjectsString = localStorage.getItem('mock_projects');
-      const localProjects = localProjectsString ? JSON.parse(localProjectsString) : [];
+      setLoading(true);
       
-      // Filter out the deleted project
-      const updatedProjects = localProjects.filter((project: any) => project.id !== id);
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', id);
       
-      // Save updated projects back to localStorage
-      localStorage.setItem('mock_projects', JSON.stringify(updatedProjects));
-      
-      // Update state
-      setBidCards(updatedProjects);
-      
-      toast({
-        title: 'Project deleted',
-        description: 'Your project has been successfully deleted.',
-      });
+      if (error) {
+        console.error('Error deleting project from Supabase:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to delete project. Please try again.',
+          variant: 'destructive',
+        });
+      } else {
+        // Update local state
+        setProjects(projects.filter(project => project.id !== id));
+        
+        toast({
+          title: 'Success',
+          description: 'Project deleted successfully.',
+        });
+      }
     } catch (error) {
       console.error('Error deleting project:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete the project. Please try again.',
+        description: 'An unexpected error occurred.',
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle creating a new project
-  const handleCreateNewProject = () => {
-    router.push('/bid-card');
-  };
-
-  // Handle viewing a project
-  const handleViewProject = (project: any) => {
+  // Clear all projects
+  const handleClearAll = async () => {
+    if (!window.confirm('Are you sure you want to delete ALL projects? This cannot be undone.')) {
+      return;
+    }
+    
     try {
-      // Format the project data for storage
-      const formattedProject = {
-        data: {
-          id: project.id,
-          title: project.title,
-          description: project.description,
-          status: project.status,
-          job_type_id: project.type,
-          job_size: project.size,
-          group_bidding_enabled: false,
-          // Format location as a proper object
-          location: typeof project.location === 'object' 
-            ? project.location 
-            : {
-                city: project.location?.split(',')[0]?.trim() || '',
-                state: project.location?.split(',')[1]?.trim() || '',
-                zip_code: project.zip_code || ''
-              },
-          // Format budget as strings
-          budget_min: project.budget_min || (project.budget ? project.budget.split('-')[0]?.trim() : ''),
-          budget_max: project.budget_max || (project.budget ? project.budget.split('-')[1]?.trim() : ''),
-          // Format timeline
-          timeline_start: project.timeline_start || (project.timeline ? project.timeline.split('-')[0]?.trim() : ''),
-          timeline_end: project.timeline_end || (project.timeline ? project.timeline.split('-')[1]?.trim() : '')
-        },
-        submittedAt: project.created_at || project.createdAt || new Date().toISOString()
-      };
+      setLoading(true);
       
-      // Store the formatted project data in localStorage
-      localStorage.setItem('lastSubmittedProject', JSON.stringify(formattedProject));
+      // Delete all projects from Supabase
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .gte('id', '0'); // This will match all IDs
       
-      // Navigate to the bid card form with a query parameter to show the view
-      router.push('/bid-card?view=true');
+      if (error) {
+        console.error('Error clearing all projects from Supabase:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to clear projects. Please try again.',
+          variant: 'destructive',
+        });
+      } else {
+        // Update local state
+        setProjects([]);
+        
+        toast({
+          title: 'Success',
+          description: 'All projects cleared successfully.',
+        });
+      }
     } catch (error) {
-      console.error('Error viewing project:', error);
+      console.error('Error clearing projects:', error);
       toast({
         title: 'Error',
-        description: 'Could not view project details. Please try again.',
+        description: 'An unexpected error occurred.',
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  // Format budget for display
+  const formatBudget = (min?: number, max?: number) => {
+    if (!min && !max) return 'Not specified';
+    if (min && max) return `$${min.toLocaleString()} - $${max.toLocaleString()}`;
+    if (min) return `$${min.toLocaleString()}+`;
+    if (max) return `Up to $${max.toLocaleString()}`;
+    return 'Not specified';
   };
 
   // Filter projects based on active tab
-  const filteredProjects = bidCards.filter(project => {
-    if (activeTab === 'active') {
-      return project.status === 'published' && project.bid_status !== 'completed';
-    } else if (activeTab === 'drafts') {
-      return project.status === 'draft';
-    } else if (activeTab === 'completed') {
-      return project.bid_status === 'completed';
-    }
+  const filteredProjects = projects.filter(project => {
+    if (activeTab === 'active') return project.status === 'active' || project.status === 'accepting_bids';
+    if (activeTab === 'drafts') return project.status === 'draft';
+    if (activeTab === 'completed') return project.status === 'completed';
     return true;
   });
 
-  // Get status badge color and text
-  const getStatusBadge = (project: any) => {
-    const status = project.bid_status || 'accepting_bids';
-    
-    switch (status) {
-      case 'accepting_bids':
-        return (
-          <div className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            Accepting Bids
-          </div>
-        );
-      case 'in_progress':
-        return (
-          <div className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            In Progress
-          </div>
-        );
-      case 'completed':
-        return (
-          <div className="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            Completed
-          </div>
-        );
-      default:
-        return (
-          <div className="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded">
-            Unknown
-          </div>
-        );
-    }
-  };
-
-  // Format currency
-  const formatCurrency = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return 'Not specified';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
   return (
-    <div className="container mx-auto py-8">
+    <div className="container mx-auto py-8 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">My Projects</h1>
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700 flex items-center gap-2"
-          onClick={handleCreateNewProject}
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-          </svg>
-          Create New Project
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleClearAll}
+            variant="outline"
+            className="bg-red-50 text-red-600 hover:bg-red-100 border-red-200"
+          >
+            Clear All Projects
+          </Button>
+          <Button onClick={handleCreateProject}>
+            Create New Project
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="active" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 bg-gray-100 p-1 rounded-lg">
-          <TabsTrigger 
-            value="active" 
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
-          >
-            Active Projects
-          </TabsTrigger>
-          <TabsTrigger 
-            value="drafts"
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
-          >
-            Drafts
-          </TabsTrigger>
-          <TabsTrigger 
-            value="completed"
-            className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-md px-4 py-2 transition-all"
-          >
-            Completed
-          </TabsTrigger>
+      <Tabs defaultValue="active" onValueChange={setActiveTab}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="active">Active Projects</TabsTrigger>
+          <TabsTrigger value="drafts">Drafts</TabsTrigger>
+          <TabsTrigger value="completed">Completed</TabsTrigger>
         </TabsList>
 
         <TabsContent value={activeTab}>
           {loading ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+              <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
             </div>
-          ) : filteredProjects.length === 0 ? (
-            <EmptyState onCreateProject={handleCreateNewProject} />
-          ) : (
+          ) : filteredProjects.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredProjects.map((project) => (
-                <ProjectCard 
-                  key={project.id} 
-                  project={project} 
-                  onViewDetails={handleViewProject} 
-                  onDelete={handleDelete} 
-                  showDeleteButton={true}
-                />
+              {filteredProjects.map(project => (
+                <Card key={project.id} className="overflow-hidden">
+                  <div className="relative h-40 bg-gray-200">
+                    <Image
+                      src="/placeholder-project.jpg"
+                      alt={project.title}
+                      fill
+                      style={{ objectFit: 'cover' }}
+                    />
+                    <div className="absolute top-2 left-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {project.status}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <CardHeader>
+                    <CardTitle>{project.title}</CardTitle>
+                    <p className="text-sm text-gray-500 line-clamp-2">
+                      {project.description || 'No description provided'}
+                    </p>
+                  </CardHeader>
+                  
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <div className="text-gray-500 text-xs">Budget</div>
+                        <div>{formatBudget(project.budget_min, project.budget_max)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500 text-xs">Location</div>
+                        <div>{project.location || 'Not specified'}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-500 text-xs">Type</div>
+                        <div>{project.type || 'Not specified'}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                  
+                  <CardFooter className="flex justify-between">
+                    <Button variant="outline" asChild>
+                      <Link href={`/dashboard/homeowner/projects/${project.id}`}>
+                        View Details
+                      </Link>
+                    </Button>
+                    <Button 
+                      variant="destructive" 
+                      onClick={() => handleDelete(project.id)}
+                    >
+                      Delete
+                    </Button>
+                  </CardFooter>
+                </Card>
               ))}
+            </div>
+          ) : (
+            <div className="text-center py-12 bg-gray-50 rounded-lg">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No projects found</h3>
+              <p className="text-gray-500 mb-6">Get started by creating a new project.</p>
+              <Button onClick={handleCreateProject}>Create Your First Project</Button>
             </div>
           )}
         </TabsContent>
       </Tabs>
-      
-      <Toaster />
     </div>
   );
 }

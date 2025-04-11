@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NUKE EVERYTHING</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #e53e3e;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        button {
+            background-color: #e53e3e;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin: 20px auto;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #c53030;
+        }
+        pre {
+            background-color: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            padding: 15px;
+            overflow: auto;
+            margin: 20px 0;
+        }
+        .success {
+            background-color: #c6f6d5;
+            color: #2f855a;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            display: none;
+        }
+        .warning {
+            background-color: #feebc8;
+            color: #c05621;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        #storageContents {
+            margin-top: 20px;
+        }
+        .storage-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #f7fafc;
+            border-radius: 5px;
+        }
+        .storage-key {
+            font-weight: bold;
+            color: #4a5568;
+        }
+        .storage-value {
+            color: #718096;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <h1>NUKE EVERYTHING</h1>
+    
+    <div class="warning">
+        <strong>WARNING:</strong> This will completely reset all localStorage data for this domain. This action cannot be undone.
+    </div>
+    
+    <h2>Current localStorage Contents</h2>
+    <div id="storageContents"></div>
+    
+    <button id="nukeButton">NUKE ALL DATA</button>
+    
+    <div id="successMessage" class="success">
+        <strong>SUCCESS!</strong> All localStorage data has been completely wiped out.
+    </div>
+    
+    <h2>Technical Details</h2>
+    <p>This tool will:</p>
+    <ol>
+        <li>Clear all localStorage data for this domain</li>
+        <li>Clear all sessionStorage data for this domain</li>
+        <li>Clear all cookies for this domain</li>
+        <li>Clear all IndexedDB databases for this domain</li>
+        <li>Clear all Cache API caches for this domain</li>
+        <li>Unregister all service workers for this domain</li>
+    </ol>
+    
+    <script>
+        // Display current localStorage contents
+        function displayStorageContents() {
+            const storageContents = document.getElementById('storageContents');
+            storageContents.innerHTML = '';
+            
+            if (localStorage.length === 0) {
+                storageContents.innerHTML = '<p>No items in localStorage.</p>';
+                return;
+            }
+            
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                let value = localStorage.getItem(key);
+                
+                try {
+                    // Try to parse JSON for better display
+                    const parsedValue = JSON.parse(value);
+                    value = JSON.stringify(parsedValue, null, 2);
+                } catch (e) {
+                    // Not JSON, use as is
+                }
+                
+                const item = document.createElement('div');
+                item.className = 'storage-item';
+                
+                const keyElement = document.createElement('div');
+                keyElement.className = 'storage-key';
+                keyElement.textContent = key;
+                
+                const valueElement = document.createElement('div');
+                valueElement.className = 'storage-value';
+                valueElement.textContent = value;
+                
+                item.appendChild(keyElement);
+                item.appendChild(valueElement);
+                storageContents.appendChild(item);
+            }
+        }
+        
+        // Display initial storage contents
+        displayStorageContents();
+        
+        // Handle nuke button click
+        document.getElementById('nukeButton').addEventListener('click', function() {
+            // Clear localStorage
+            localStorage.clear();
+            console.log('localStorage cleared');
+            
+            // Clear sessionStorage
+            sessionStorage.clear();
+            console.log('sessionStorage cleared');
+            
+            // Clear cookies
+            document.cookie.split(";").forEach(function(c) {
+                document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+            });
+            console.log('Cookies cleared');
+            
+            // Clear IndexedDB
+            if (window.indexedDB) {
+                window.indexedDB.databases().then(databases => {
+                    databases.forEach(database => {
+                        window.indexedDB.deleteDatabase(database.name);
+                        console.log(`IndexedDB database ${database.name} deleted`);
+                    });
+                }).catch(error => {
+                    console.error('Error clearing IndexedDB:', error);
+                });
+            }
+            
+            // Clear Cache API
+            if ('caches' in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                        console.log(`Cache ${name} deleted`);
+                    });
+                }).catch(error => {
+                    console.error('Error clearing caches:', error);
+                });
+            }
+            
+            // Unregister service workers
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(registrations => {
+                    registrations.forEach(registration => {
+                        registration.unregister();
+                        console.log('Service worker unregistered');
+                    });
+                }).catch(error => {
+                    console.error('Error unregistering service workers:', error);
+                });
+            }
+            
+            // Set empty projects array
+            localStorage.setItem('mock_projects', '[]');
+            console.log('Set empty mock_projects array');
+            
+            // Force using localStorage
+            localStorage.setItem('use_supabase', 'false');
+            console.log('Set use_supabase to false');
+            
+            // Show success message
+            document.getElementById('successMessage').style.display = 'block';
+            
+            // Update displayed storage contents
+            displayStorageContents();
+            
+            // Add redirect button
+            const redirectButton = document.createElement('button');
+            redirectButton.textContent = 'GO TO DASHBOARD';
+            redirectButton.addEventListener('click', function() {
+                window.location.href = '/dashboard/homeowner';
+            });
+            document.body.appendChild(redirectButton);
+        });
+    </script>
+</body>
+</html>

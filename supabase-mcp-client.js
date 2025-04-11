@@ -1,182 +1,329 @@
-// Supabase MCP Client
-// This file provides functions to interact with the Supabase MCP server
+#!/usr/bin/env node
 
+// Supabase MCP Client
+// This file provides a reliable CLI to interact with the Supabase MCP server
+
+const fetch = require('node-fetch');
 const MCP_SERVER_URL = 'http://localhost:4567';
 
 /**
- * Execute a SQL query on the Supabase database
- * @param {string} sql - The SQL query to execute
- * @returns {Promise<object>} - The result of the query
+ * Make a request to the MCP server
+ * @param {string} endpoint - The endpoint to call
+ * @param {string} method - The HTTP method to use
+ * @param {object} body - The request body (for POST requests)
+ * @returns {Promise<object>} - The response data
  */
-async function executeSql(sql) {
+async function makeRequest(endpoint, method = 'GET', body = null) {
   try {
-    const response = await fetch(`${MCP_SERVER_URL}/execute-sql`, {
-      method: 'POST',
+    const options = {
+      method,
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ sql }),
-    });
+    };
+
+    if (body && (method === 'POST' || method === 'PUT')) {
+      options.body = JSON.stringify(body);
+    }
+
+    console.log(`Making ${method} request to ${endpoint}`);
+    const response = await fetch(`${MCP_SERVER_URL}${endpoint}`, options);
     
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to execute SQL: ${errorData.error}`);
+      const errorText = await response.text();
+      throw new Error(`Server returned ${response.status}: ${errorText}`);
     }
     
     return await response.json();
   } catch (error) {
-    console.error('Error executing SQL:', error);
+    console.error(`Error making request to ${endpoint}:`, error.message);
     throw error;
   }
 }
 
 /**
- * Query a table in the Supabase database
+ * Check the server status
+ * @returns {Promise<object>} - The server status
+ */
+async function checkServerStatus() {
+  return makeRequest('/');
+}
+
+/**
+ * List all tables in the database
+ * @returns {Promise<object>} - The list of tables
+ */
+async function listTables() {
+  return makeRequest('/tables');
+}
+
+/**
+ * Describe a table's structure
+ * @param {string} tableName - The name of the table to describe
+ * @returns {Promise<object>} - The table structure
+ */
+async function describeTable(tableName) {
+  return makeRequest(`/table/${tableName}`);
+}
+
+/**
+ * Query a table
  * @param {string} table - The table to query
- * @param {object} query - Query parameters
- * @returns {Promise<object>} - The result of the query
+ * @param {string} select - The columns to select
+ * @param {object} filters - Filter conditions
+ * @param {number} limit - The maximum number of rows to return
+ * @param {number} offset - The offset for pagination
+ * @param {object} order - Ordering configuration
+ * @returns {Promise<object>} - The query results
  */
-async function queryTable(table, query = {}) {
-  try {
-    const response = await fetch(`${MCP_SERVER_URL}/query-table`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ table, query }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to query table: ${errorData.error}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error querying table:', error);
-    throw error;
-  }
+async function queryTable(table, select = '*', filters = {}, limit = 100, offset = 0, order = null) {
+  return makeRequest('/query', 'POST', { 
+    table, 
+    select, 
+    filters, 
+    limit, 
+    offset, 
+    order 
+  });
 }
 
 /**
- * Create a table in the Supabase database
- * @param {string} table - The table to create
- * @param {object} schema - The schema definition
- * @returns {Promise<object>} - The result of the operation
- */
-async function createTable(table, schema) {
-  try {
-    const response = await fetch(`${MCP_SERVER_URL}/create-table`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ table, schema }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to create table: ${errorData.error}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error creating table:', error);
-    throw error;
-  }
-}
-
-/**
- * Insert data into a table in the Supabase database
+ * Insert data into a table
  * @param {string} table - The table to insert into
  * @param {object|array} data - The data to insert
- * @returns {Promise<object>} - The result of the operation
+ * @returns {Promise<object>} - The insert results
  */
 async function insertData(table, data) {
-  try {
-    const response = await fetch(`${MCP_SERVER_URL}/insert-data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ table, data }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to insert data: ${errorData.error}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error inserting data:', error);
-    throw error;
-  }
+  return makeRequest('/insert', 'POST', { table, data });
 }
 
 /**
- * Update data in a table in the Supabase database
+ * Update data in a table
  * @param {string} table - The table to update
  * @param {object} data - The data to update
- * @param {object} condition - The condition for the update
- * @returns {Promise<object>} - The result of the operation
+ * @param {object} match - The match conditions for the update
+ * @returns {Promise<object>} - The update results
  */
-async function updateData(table, data, condition) {
-  try {
-    const response = await fetch(`${MCP_SERVER_URL}/update-data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ table, data, condition }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to update data: ${errorData.error}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error updating data:', error);
-    throw error;
-  }
+async function updateData(table, data, match) {
+  return makeRequest('/update', 'POST', { table, data, match });
 }
 
 /**
- * Delete data from a table in the Supabase database
+ * Delete data from a table
  * @param {string} table - The table to delete from
- * @param {object} condition - The condition for the deletion
- * @returns {Promise<object>} - The result of the operation
+ * @param {object} match - The match conditions for the deletion
+ * @returns {Promise<object>} - The delete results
  */
-async function deleteData(table, condition) {
+async function deleteData(table, match) {
+  return makeRequest('/delete', 'POST', { table, match });
+}
+
+/**
+ * Call an RPC function
+ * @param {string} functionName - The name of the function to call
+ * @param {object} params - The parameters to pass to the function
+ * @returns {Promise<object>} - The function results
+ */
+async function callRpcFunction(functionName, params = {}) {
+  return makeRequest(`/rpc/${functionName}`, 'POST', params);
+}
+
+/**
+ * Print the results in a formatted way
+ * @param {object} data - The data to print
+ */
+function printResults(data) {
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// Command line interface
+async function main() {
+  const command = process.argv[2];
+  
+  if (!command) {
+    console.log(`
+Supabase MCP Client
+
+Usage:
+  node supabase-mcp-client.js <command> [options]
+
+Commands:
+  status                    Check if the MCP server is running
+  tables                    List all tables in the database
+  table <name>              Describe the structure of a table
+  query <table> [filters]   Query data from a table (JSON filters optional)
+  insert <table> <data>     Insert data into a table (data as JSON)
+  update <table> <data> <match>  Update data in a table (data and match as JSON)
+  delete <table> <match>    Delete data from a table (match as JSON)
+  rpc <function> [params]   Call an RPC function (params as JSON)
+    `);
+    return;
+  }
+  
   try {
-    const response = await fetch(`${MCP_SERVER_URL}/delete-data`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ table, condition }),
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Failed to delete data: ${errorData.error}`);
+    switch (command) {
+      case 'status':
+        const status = await checkServerStatus();
+        console.log('Server status:');
+        printResults(status);
+        break;
+        
+      case 'tables':
+        const tables = await listTables();
+        console.log('Tables in database:');
+        printResults(tables);
+        break;
+        
+      case 'table':
+        const tableName = process.argv[3];
+        if (!tableName) {
+          console.error('Error: Table name is required');
+          return;
+        }
+        const tableInfo = await describeTable(tableName);
+        console.log(`Structure of table '${tableName}':`);
+        printResults(tableInfo);
+        break;
+        
+      case 'query':
+        const queryTableName = process.argv[3];
+        if (!queryTableName) {
+          console.error('Error: Table name is required');
+          return;
+        }
+        
+        let filters = {};
+        if (process.argv[4]) {
+          try {
+            filters = JSON.parse(process.argv[4]);
+          } catch (e) {
+            console.error('Error: Filters must be valid JSON');
+            return;
+          }
+        }
+        
+        const limit = process.argv[5] ? parseInt(process.argv[5]) : 100;
+        const queryResult = await queryTable(queryTableName, '*', filters, limit);
+        console.log(`Data from table '${queryTableName}' (limit ${limit}):`);
+        printResults(queryResult);
+        break;
+        
+      case 'insert':
+        const insertTable = process.argv[3];
+        const insertDataStr = process.argv[4];
+        
+        if (!insertTable || !insertDataStr) {
+          console.error('Error: Table name and JSON data are required');
+          return;
+        }
+        
+        let insertData;
+        try {
+          insertData = JSON.parse(insertDataStr);
+        } catch (e) {
+          console.error('Error: Data must be valid JSON');
+          return;
+        }
+        
+        const insertResult = await insertData(insertTable, insertData);
+        console.log('Insert result:');
+        printResults(insertResult);
+        break;
+        
+      case 'update':
+        const updateTable = process.argv[3];
+        const updateDataStr = process.argv[4];
+        const updateMatchStr = process.argv[5];
+        
+        if (!updateTable || !updateDataStr || !updateMatchStr) {
+          console.error('Error: Table name, data, and match conditions are required');
+          return;
+        }
+        
+        let updateData, updateMatch;
+        try {
+          updateData = JSON.parse(updateDataStr);
+          updateMatch = JSON.parse(updateMatchStr);
+        } catch (e) {
+          console.error('Error: Data and match must be valid JSON');
+          return;
+        }
+        
+        const updateResult = await updateData(updateTable, updateData, updateMatch);
+        console.log('Update result:');
+        printResults(updateResult);
+        break;
+        
+      case 'delete':
+        const deleteTable = process.argv[3];
+        const deleteMatchStr = process.argv[4];
+        
+        if (!deleteTable || !deleteMatchStr) {
+          console.error('Error: Table name and match conditions are required');
+          return;
+        }
+        
+        let deleteMatch;
+        try {
+          deleteMatch = JSON.parse(deleteMatchStr);
+        } catch (e) {
+          console.error('Error: Match must be valid JSON');
+          return;
+        }
+        
+        const deleteResult = await deleteData(deleteTable, deleteMatch);
+        console.log('Delete result:');
+        printResults(deleteResult);
+        break;
+        
+      case 'rpc':
+        const functionName = process.argv[3];
+        const paramsStr = process.argv[4] || '{}';
+        
+        if (!functionName) {
+          console.error('Error: Function name is required');
+          return;
+        }
+        
+        let params;
+        try {
+          params = JSON.parse(paramsStr);
+        } catch (e) {
+          console.error('Error: Params must be valid JSON');
+          return;
+        }
+        
+        const rpcResult = await callRpcFunction(functionName, params);
+        console.log(`RPC function '${functionName}' result:`);
+        printResults(rpcResult);
+        break;
+        
+      default:
+        console.error(`Error: Unknown command '${command}'`);
+        break;
     }
-    
-    return await response.json();
   } catch (error) {
-    console.error('Error deleting data:', error);
-    throw error;
+    console.error('Error executing command:', error.message);
+    process.exit(1);
   }
 }
 
-// Export all functions
+// Export functions for programmatic use
 module.exports = {
-  executeSql,
+  checkServerStatus,
+  listTables,
+  describeTable,
   queryTable,
-  createTable,
   insertData,
   updateData,
   deleteData,
+  callRpcFunction
 };
+
+// Run the CLI if this file is executed directly
+if (require.main === module) {
+  main().catch(error => {
+    console.error('Fatal error:', error.message);
+    process.exit(1);
+  });
+}
