@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
 import { getProjectTypePlaceholder, formatProjectType, getJobCategory, formatTimelineHorizon } from '@/utils/project-images';
 import { createClient } from '@supabase/supabase-js';
 import ProjectMediaGallery from './ProjectMediaGallery';
@@ -337,6 +340,60 @@ export default function ProjectCard({
   imageUrl,
   usePlaceholder = true
 }: ProjectCardProps) {
+  const [projectImage, setProjectImage] = useState<string>('');
+  const [isImageLoading, setIsImageLoading] = useState<boolean>(true);
+  const [copied, setCopied] = useState<boolean>(false);
+  
+  // Handle image loading
+  useEffect(() => {
+    let imageSource = '';
+    
+    // Priority: 1. Passed imageUrl prop, 2. Project media, 3. Placeholder
+    if (imageUrl) {
+      imageSource = imageUrl;
+    } else if (project.media && project.media.length > 0) {
+      imageSource = project.media[0].media_url;
+    } else if (project.imageUrl) {
+      imageSource = project.imageUrl;
+    } else if (usePlaceholder) {
+      // Use type-based placeholder
+      imageSource = getGenericPlaceholder(project);
+    } else {
+      // Default fallback
+      imageSource = '/placeholders/default-project.svg';
+    }
+    
+    setProjectImage(imageSource);
+    setIsImageLoading(false);
+  }, [project, imageUrl, usePlaceholder]);
+  
+  const handleImageError = () => {
+    setProjectImage('/placeholders/default-project.svg');
+    setIsImageLoading(false);
+  };
+  
+  // Handle copy link functionality
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/projects/${project.id}`;
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopied(true);
+        toast({
+          title: "Link copied!",
+          description: "Project link copied to clipboard",
+        });
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => {
+        toast({
+          title: "Failed to copy",
+          description: "Could not copy the link to clipboard",
+          variant: "destructive",
+        });
+      }
+    );
+  };
+  
   // Determine the effective status for display
   const effectiveStatus = project.bid_status || project.status || 'draft';
   
@@ -494,22 +551,6 @@ export default function ProjectCard({
     );
   };
   
-  // Get image URL or use placeholder
-  let projectImageUrl = imageUrl || project.imageUrl;
-  
-  // Use type-based placeholder if requested or if no image URL is available
-  if (usePlaceholder || !projectImageUrl) {
-    // Always use a placeholder image for now
-    projectImageUrl = getGenericPlaceholder(project);
-  }
-  
-  // Handle image error
-  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    const target = e.target as HTMLImageElement;
-    target.onerror = null;
-    target.src = '/placeholders/default-project.svg';
-  };
-  
   return (
     <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 ${className} group`}>
       <div className="relative">
@@ -517,7 +558,7 @@ export default function ProjectCard({
         <div className="h-48 bg-gradient-to-r from-blue-50 to-indigo-50 relative overflow-hidden">
           <div className="relative w-full h-full transition-transform duration-500 group-hover:scale-105">
             <img 
-              src={projectImageUrl}
+              src={projectImage}
               alt={project.title || "Project image"}
               className="w-full h-full object-cover"
               onError={handleImageError}
@@ -629,42 +670,38 @@ export default function ProjectCard({
         )}
         
         {/* Action Buttons */}
-        <div className="flex items-center justify-between mt-4">
-          <button
-            onClick={handleViewDetails}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-sm transition-all duration-200 transform hover:translate-y-[-1px] hover:shadow-md"
+        <div className="flex justify-between items-center mt-4">
+          <Button
+            variant="outline"
+            className="text-xs border-blue-200 hover:bg-blue-50 hover:text-primary transition-colors"
+            onClick={handleCopyLink}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            View Details
-          </button>
+            <span className="mr-1">
+              {copied ? '✓' : '🔗'}
+            </span>
+            Share
+          </Button>
           
-          <div className="flex gap-2">
-            {showShareButton && (
-              <button 
-                onClick={handleShare}
-                className="inline-flex items-center p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-all duration-200 transform hover:scale-110"
-                title="Share project"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-            )}
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              className="text-xs border-blue-200 hover:bg-blue-50 hover:text-primary transition-colors"
+              asChild
+            >
+              <Link href={`/dashboard/homeowner/projects/${project.id}/messaging`}>
+                <span className="mr-1">💬</span>
+                Messages
+              </Link>
+            </Button>
             
-            {showDeleteButton && (
-              <button 
-                onClick={handleDelete}
-                className="inline-flex items-center p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-all duration-200 transform hover:scale-110"
-                title="Delete project"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
+            <Button
+              className="text-xs bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 transition-all hover:shadow-md"
+              asChild
+            >
+              <Link href={`/dashboard/homeowner/projects/${project.id}`}>
+                View Details
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
