@@ -342,8 +342,14 @@ export default function ProjectCard({
   
   // Handle view details click
   const handleViewDetails = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     if (onViewDetails) {
       onViewDetails(project);
+    } else {
+      // Default behavior - navigate to project details page
+      window.location.href = `/dashboard/homeowner/projects/${project.id}`;
     }
   };
   
@@ -511,161 +517,159 @@ export default function ProjectCard({
   };
   
   return (
-    <div className={`bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 ${className} group`}>
+    <div className={`relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:shadow-md ${className}`}>
+      {/* Card Header with Status Badge */}
       <div className="relative">
         {/* Project Image */}
-        <div className="h-48 bg-gradient-to-r from-blue-50 to-indigo-50 relative overflow-hidden">
-          <div className="relative w-full h-full transition-transform duration-500 group-hover:scale-105">
-            <img 
-              src={projectImageUrl}
+        <div className="relative h-48 w-full overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50">
+          {imageUrl || (project.media && project.media.length > 0 && project.media[0].media_url) ? (
+            <img
+              src={imageUrl || (project.media && project.media.length > 0 ? project.media[0].media_url : '')}
               alt={project.title || "Project image"}
-              className="w-full h-full object-cover"
-              onError={handleImageError}
+              className="h-full w-full object-cover transition-transform duration-500 hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-80"></div>
-          </div>
-        </div>
-        
-        {/* Status Badge - Positioned at the top left of the image */}
-        <div className="absolute top-3 left-3 transform transition-transform duration-300 group-hover:scale-105 group-hover:translate-y-1">
-          <StatusBadge status={effectiveStatus} />
-        </div>
-        
-        {/* Indicators for media and bids - Positioned at top right */}
-        <div className="absolute top-3 right-3 flex gap-2">
-          {project.hasMedia && (
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/90 text-blue-600 shadow-sm backdrop-blur-sm transform transition-transform duration-300 hover:scale-110">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          ) : usePlaceholder ? (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+              <img
+                src={getGenericPlaceholder(project)}
+                alt="Project type"
+                className="h-32 w-32 opacity-50"
+              />
+            </div>
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 22V12h6v10" />
               </svg>
             </div>
           )}
-          {project.bid_count > 0 && (
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-white/90 text-green-600 shadow-sm backdrop-blur-sm transform transition-transform duration-300 hover:scale-110">
-              <span className="text-xs font-medium">{project.bid_count}</span>
-            </div>
-          )}
+          
+          {/* Status Badge - Positioned on top of the image */}
+          <div className="absolute right-3 top-3">
+            <StatusBadge status={effectiveStatus} />
+          </div>
         </div>
-        
-        {/* Project Type - Positioned at the bottom of the image */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/70 to-transparent">
-          <div className="text-white font-medium text-shadow">
-            {getProjectType(project)}
+
+        {/* Project Title */}
+        <div className="p-4">
+          <h3 className="mb-1 font-semibold text-gray-900 line-clamp-2">
+            {project.title || "Untitled Project"}
+          </h3>
+          
+          {/* Project Type & Location */}
+          <div className="mb-3 flex flex-wrap gap-2 text-sm text-gray-600">
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mr-1 h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              {getProjectType(project) || "General Project"}
+            </div>
+            
+            <div className="flex items-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mr-1 h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              {formatLocation(project.location) || "Location not specified"}
+            </div>
+          </div>
+          
+          {/* Timeline & Budget */}
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center rounded-md bg-gray-50 p-2 text-gray-600 transition-colors duration-300 hover:bg-blue-50">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>
+                {formatTimelineHorizon(project.timeline_horizon) || "Timeline not specified"}
+              </span>
+            </div>
+            
+            <div className="flex items-center rounded-md bg-gray-50 p-2 text-gray-600 transition-colors duration-300 hover:bg-blue-50">
+              <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+              <span>
+                {project.budget_min && project.budget_max
+                  ? `$${project.budget_min} - $${project.budget_max}`
+                  : project.budget
+                  ? `$${project.budget}`
+                  : "Budget not specified"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
       
-      {/* Card Content */}
-      <div className="p-5">
-        {/* Job Category - Top Position */}
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="text-xl font-bold text-gray-900 group-hover:text-blue-700 transition-colors duration-300">
-            {getActualJobCategory(project)}
-          </h3>
+      {/* Media Thumbnails - Positioned at the bottom */}
+      {project.media && project.media.length > 0 && (
+        <div className="flex gap-1 px-4 pb-3 overflow-x-auto">
+          {project.media.slice(0, 4).map((item: any, index: number) => (
+            <div key={item.id} className="w-12 h-12 rounded overflow-hidden flex-shrink-0 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 transform">
+              <img 
+                src={item.media_url} 
+                alt={`Project image ${index + 1}`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ))}
+          {project.media.length > 4 && (
+            <div className="w-12 h-12 rounded bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 transform">
+              +{project.media.length - 4}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Action Buttons */}
+      <div className="flex items-center justify-between px-4 pb-4 pt-2">
+        <button
+          onClick={handleViewDetails}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-sm transition-all duration-200 transform hover:translate-y-[-1px] hover:shadow-md"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          View Details
+        </button>
+        
+        <div className="flex gap-2">
+          {showShareButton && (
+            <button 
+              onClick={handleShare}
+              className="inline-flex items-center p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-all duration-200 transform hover:scale-110"
+              title="Share project"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+            </button>
+          )}
           
-          {/* Location */}
-          <div className="flex items-center text-sm text-gray-500 hover:text-blue-600 transition-colors duration-300">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span className="group-hover:underline">
-              {formatLocation(project.location || project.zip_code || '')}
-            </span>
-          </div>
-        </div>
-        
-        {/* Project Title */}
-        <div className="text-lg font-semibold text-gray-800 mb-3 line-clamp-1 group-hover:text-blue-600 transition-colors duration-300">
-          {project.title || "Untitled Project"}
-        </div>
-        
-        {/* Project Details */}
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-md hover:bg-blue-50 transition-colors duration-300">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span>
-              {project.timeline_horizons?.display_name || 
-               formatTimelineHorizon(project.timeline_horizon_id) || 
-               project.timeline || 
-               "Timeline not specified"}
-            </span>
-          </div>
-          
-          <div className="flex items-center text-sm text-gray-600 bg-gray-50 p-2 rounded-md hover:bg-blue-50 transition-colors duration-300">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-            </svg>
-            <span>
-              {project.budget_min && project.budget_max
-                ? `$${project.budget_min} - $${project.budget_max}`
-                : project.budget
-                ? `$${project.budget}`
-                : "Budget not specified"}
-            </span>
-          </div>
-        </div>
-        
-        {/* Media Thumbnails - Positioned above action buttons */}
-        {project.media && project.media.length > 0 && (
-          <div className="flex gap-1 mb-4 overflow-x-auto">
-            {project.media.slice(0, 4).map((item: any, index: number) => (
-              <div key={item.id} className="w-12 h-12 rounded overflow-hidden flex-shrink-0 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 transform">
-                <img 
-                  src={item.media_url} 
-                  alt={`Project image ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ))}
-            {project.media.length > 4 && (
-              <div className="w-12 h-12 rounded bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center text-gray-600 text-xs font-medium flex-shrink-0 border border-gray-200 shadow-sm hover:shadow-md transition-all duration-300 hover:scale-105 transform">
-                +{project.media.length - 4}
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Action Buttons */}
-        <div className="flex items-center justify-between mt-4">
-          <button
-            onClick={handleViewDetails}
-            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-sm transition-all duration-200 transform hover:translate-y-[-1px] hover:shadow-md"
+          {/* Messaging Button */}
+          <Link 
+            href={`/dashboard/homeowner/projects/${project.id}/messaging`}
+            className="inline-flex items-center p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-all duration-200 transform hover:scale-110"
+            title="Message contractors"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            View Details
-          </button>
+          </Link>
           
-          <div className="flex gap-2">
-            {showShareButton && (
-              <button 
-                onClick={handleShare}
-                className="inline-flex items-center p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-all duration-200 transform hover:scale-110"
-                title="Share project"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-            )}
-            
-            {showDeleteButton && (
-              <button 
-                onClick={handleDelete}
-                className="inline-flex items-center p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-all duration-200 transform hover:scale-110"
-                title="Delete project"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            )}
-          </div>
+          {showDeleteButton && (
+            <button 
+              onClick={handleDelete}
+              className="inline-flex items-center p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-all duration-200 transform hover:scale-110"
+              title="Delete project"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

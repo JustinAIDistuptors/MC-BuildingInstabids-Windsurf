@@ -18,50 +18,17 @@ const nextConfig = {
     ],
   },
   
-  // Optimize output for better performance
-  // swcMinify: true,
-  
-  // Configure webpack for better asset handling
-  webpack: (config, { isServer }) => {
-    // Optimize asset loading
-    config.module.rules.push({
-      test: /\.(png|jpe?g|gif|svg|webp)$/i,
-      type: 'asset/resource',
-    });
-    
-    return config;
+  // Development server configuration
+  devIndicators: {
+    position: 'bottom-right',
   },
   
-  // Improve static asset caching
-  headers: async () => {
-    return [
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-      {
-        source: '/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
-    ];
-  },
-  
-  // Ensure proper error handling
+  // Disable aggressive caching in development
   onDemandEntries: {
-    // Keep the build page in memory for longer
-    maxInactiveAge: 60 * 60 * 1000,
-    // Number of pages to keep in memory
-    pagesBufferLength: 5,
+    // Keep pages in memory for only 10 seconds in development
+    maxInactiveAge: 10 * 1000,
+    // Poll for changes every 1 second
+    pagesBufferLength: 1,
   },
 };
 
