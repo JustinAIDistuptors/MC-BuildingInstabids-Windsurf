@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contractor Messaging Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .message-container {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .message {
+      max-width: 80%;
+      margin-bottom: 12px;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .message-own {
+      background-color: #3b82f6;
+      color: white;
+      margin-left: auto;
+    }
+    .message-other {
+      background-color: #f3f4f6;
+      color: black;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-4">
+  <div class="max-w-3xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Contractor Messaging System Demo</h1>
+    
+    <div class="bg-white rounded-lg shadow-md overflow-hidden">
+      <!-- Header -->
+      <div class="p-4 border-b flex justify-between items-center">
+        <div>
+          <h2 class="text-lg font-semibold">Test Project</h2>
+          <p class="text-sm text-gray-500" id="message-type-display">Individual Message</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span class="text-sm">Group Message</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="group-toggle" class="sr-only peer">
+            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+          </label>
+        </div>
+      </div>
+      
+      <!-- Contractor Selection -->
+      <div class="p-4 border-b" id="contractor-selection">
+        <label class="block text-sm font-medium text-gray-700 mb-1">Select Contractor</label>
+        <select id="contractor-select" class="w-full p-2 border rounded-md">
+          <option value="A">Contractor A</option>
+          <option value="B">Contractor B</option>
+          <option value="C">Contractor C</option>
+          <option value="D">Contractor D</option>
+          <option value="E">Contractor E</option>
+        </select>
+      </div>
+      
+      <!-- Messages -->
+      <div class="p-4 message-container" id="messages">
+        <!-- Messages will be added here dynamically -->
+      </div>
+      
+      <!-- Input -->
+      <div class="p-4 border-t">
+        <div class="flex space-x-2">
+          <textarea id="message-input" class="flex-grow p-2 border rounded-md" placeholder="Type your message..."></textarea>
+          <button id="send-button" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600">Send</button>
+        </div>
+        <div class="mt-2 flex space-x-2">
+          <button id="attach-button" class="text-sm text-blue-500 hover:text-blue-700">Attach Files</button>
+          <input type="file" id="file-input" class="hidden" multiple>
+          <div id="file-list" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Sample data
+    const contractors = [
+      { id: 'A', name: 'Contractor A' },
+      { id: 'B', name: 'Contractor B' },
+      { id: 'C', name: 'Contractor C' },
+      { id: 'D', name: 'Contractor D' },
+      { id: 'E', name: 'Contractor E' }
+    ];
+    
+    let messages = [
+      { id: 1, content: 'Hello, I am interested in your project', isOwn: false, sender: 'A', timestamp: new Date().toISOString() },
+      { id: 2, content: 'Thanks for your interest! Do you have any questions?', isOwn: true, timestamp: new Date().toISOString() },
+      { id: 3, content: 'Yes, what is the timeline for this project?', isOwn: false, sender: 'A', timestamp: new Date().toISOString() }
+    ];
+    
+    // DOM elements
+    const messagesContainer = document.getElementById('messages');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-button');
+    const groupToggle = document.getElementById('group-toggle');
+    const messageTypeDisplay = document.getElementById('message-type-display');
+    const contractorSelection = document.getElementById('contractor-selection');
+    const contractorSelect = document.getElementById('contractor-select');
+    const attachButton = document.getElementById('attach-button');
+    const fileInput = document.getElementById('file-input');
+    const fileList = document.getElementById('file-list');
+    
+    // Selected files
+    let selectedFiles = [];
+    
+    // Render messages
+    function renderMessages() {
+      messagesContainer.innerHTML = '';
+      
+      messages.forEach(message => {
+        const messageElement = document.createElement('div');
+        messageElement.className = `message ${message.isOwn ? 'message-own' : 'message-other'}`;
+        
+        let content = '';
+        
+        if (!message.isOwn) {
+          content += `
+            <div class="flex items-center space-x-2 mb-1">
+              <div class="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs font-bold">
+                ${message.sender}
+              </div>
+              <span class="text-xs font-medium">Contractor ${message.sender}</span>
+            </div>
+          `;
+        }
+        
+        content += `
+          <div>${message.content}</div>
+          <div class="text-xs mt-1 ${message.isOwn ? 'text-blue-100' : 'text-gray-500'}">
+            ${formatTimestamp(message.timestamp)}
+          </div>
+        `;
+        
+        messageElement.innerHTML = content;
+        messagesContainer.appendChild(messageElement);
+      });
+      
+      // Scroll to bottom
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Format timestamp
+    function formatTimestamp(timestamp) {
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    
+    // Send message
+    function sendMessage() {
+      const content = messageInput.value.trim();
+      if (!content) return;
+      
+      const newMessage = {
+        id: Date.now(),
+        content,
+        isOwn: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      messages.push(newMessage);
+      renderMessages();
+      
+      // Clear input
+      messageInput.value = '';
+      selectedFiles = [];
+      fileList.innerHTML = '';
+    }
+    
+    // Toggle group messaging
+    function toggleGroupMessaging() {
+      const isGroup = groupToggle.checked;
+      messageTypeDisplay.textContent = isGroup ? 'Group Message' : 'Individual Message';
+      contractorSelection.style.display = isGroup ? 'none' : 'block';
+    }
+    
+    // Handle file selection
+    function handleFileSelection(e) {
+      const files = Array.from(e.target.files);
+      if (files.length === 0) return;
+      
+      // Limit to 5 files
+      const newFiles = files.slice(0, 5 - selectedFiles.length);
+      selectedFiles = [...selectedFiles, ...newFiles];
+      
+      renderFileList();
+    }
+    
+    // Render file list
+    function renderFileList() {
+      fileList.innerHTML = '';
+      
+      selectedFiles.forEach((file, index) => {
+        const fileElement = document.createElement('div');
+        fileElement.className = 'bg-gray-100 text-xs rounded px-2 py-1 flex items-center';
+        fileElement.innerHTML = `
+          <span class="truncate max-w-[100px]">${file.name}</span>
+          <button class="ml-1 text-gray-500 hover:text-gray-700" data-index="${index}">×</button>
+        `;
+        
+        fileList.appendChild(fileElement);
+      });
+    }
+    
+    // Remove file
+    function removeFile(index) {
+      selectedFiles = selectedFiles.filter((_, i) => i !== index);
+      renderFileList();
+    }
+    
+    // Event listeners
+    sendButton.addEventListener('click', sendMessage);
+    
+    messageInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    
+    groupToggle.addEventListener('change', toggleGroupMessaging);
+    
+    attachButton.addEventListener('click', () => {
+      fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', handleFileSelection);
+    
+    fileList.addEventListener('click', e => {
+      if (e.target.tagName === 'BUTTON') {
+        const index = parseInt(e.target.dataset.index);
+        removeFile(index);
+      }
+    });
+    
+    // Initial render
+    renderMessages();
+  </script>
+</body>
+</html>

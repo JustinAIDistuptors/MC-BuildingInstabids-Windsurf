@@ -191,159 +191,177 @@ export default function HomeownerDashboard() {
   return (
     <div className="p-6">
       {/* Hero Banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl p-8 mb-8 text-white">
-        <div className="max-w-4xl mx-auto">
+      <div className="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 rounded-xl p-8 mb-8 text-white shadow-lg relative overflow-hidden">
+        {/* Abstract background patterns */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2)_0%,transparent_40%)]"></div>
+          <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_70%_80%,rgba(255,255,255,0.2)_0%,transparent_40%)]"></div>
+        </div>
+        
+        <div className="max-w-4xl mx-auto relative z-10">
           <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2">Welcome to Your InstaBids Dashboard</h1>
-            <p className="text-blue-100 mb-4 max-w-xl">
+            <h1 className="text-3xl font-bold mb-2 animate-fade-in">Welcome to Your InstaBids Dashboard</h1>
+            <p className="text-blue-100 mb-4 max-w-xl animate-fade-in opacity-90" style={{ animationDelay: '0.1s' }}>
               Create projects and receive competitive bids from qualified contractors. Manage everything from one place.
             </p>
             <Link 
               href="/dashboard/homeowner/new-project" 
-              className="inline-block px-5 py-3 mt-2 bg-white text-blue-700 font-medium rounded-lg hover:bg-blue-50 transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-white text-blue-700 rounded-md font-medium shadow-sm hover:bg-blue-50 transition-all duration-200 transform hover:translate-y-[-2px] animate-fade-in"
+              style={{ animationDelay: '0.2s' }}
             >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+              </svg>
               Create New Project
             </Link>
           </div>
           
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="bg-blue-500 bg-opacity-30 p-4 rounded-lg backdrop-blur-sm">
-              <div className="text-3xl font-bold">{stats.activeProjects}</div>
-              <div className="text-blue-100">Active Projects</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/30 shadow-inner animate-slide-up transform hover:translate-y-[-2px] transition-transform duration-200" style={{ animationDelay: '0.1s' }}>
+              <div className="flex items-center">
+                <div className="rounded-full bg-white/30 p-2 mr-3">
+                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold mb-1">{stats.activeProjects}</div>
+                  <div className="text-sm opacity-90">Active Projects</div>
+                </div>
+              </div>
             </div>
-            
-            <div className="bg-blue-500 bg-opacity-30 p-4 rounded-lg backdrop-blur-sm">
-              <div className="text-3xl font-bold">{stats.bidReceived}</div>
-              <div className="text-blue-100">Bids Received</div>
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/30 shadow-inner animate-slide-up transform hover:translate-y-[-2px] transition-transform duration-200" style={{ animationDelay: '0.2s' }}>
+              <div className="flex items-center">
+                <div className="rounded-full bg-white/30 p-2 mr-3">
+                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold mb-1">{stats.bidReceived}</div>
+                  <div className="text-sm opacity-90">Bids Received</div>
+                </div>
+              </div>
             </div>
-            
-            <div className="bg-blue-500 bg-opacity-30 p-4 rounded-lg backdrop-blur-sm">
-              <div className="text-3xl font-bold">{stats.projectsCompleted}</div>
-              <div className="text-blue-100">Projects Completed</div>
+            <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4 border border-white/30 shadow-inner animate-slide-up transform hover:translate-y-[-2px] transition-transform duration-200" style={{ animationDelay: '0.3s' }}>
+              <div className="flex items-center">
+                <div className="rounded-full bg-white/30 p-2 mr-3">
+                  <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-4xl font-bold mb-1">{stats.projectsCompleted}</div>
+                  <div className="text-sm opacity-90">Projects Completed</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
       
-      {/* Recent Projects */}
-      <div className="mb-10">
-        <div className="flex flex-row justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">Recent Projects</h2>
-          <Link href="/dashboard/homeowner/projects" className="text-blue-600 hover:text-blue-800">
-            View All Projects
+      {/* Project Tabs and List */}
+      <div className="mb-6 animate-fade-in" style={{ animationDelay: '0.4s' }}>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">Recent Projects</h2>
+          <Link 
+            href="/dashboard/homeowner/projects" 
+            className="text-blue-600 hover:text-blue-800 transition-colors duration-200 flex items-center group"
+          >
+            <span>View All Projects</span>
+            <svg className="h-4 w-4 ml-1 transform group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </Link>
         </div>
         
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin h-8 w-8 border-4 border-blue-500 rounded-full border-t-transparent"></div>
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 rounded-lg">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No projects yet</h3>
-            <p className="text-gray-500 mb-4">
-              Create your first project to start receiving bids from contractors.
-            </p>
-            <Link href="/simple-bid">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Create New Project
-              </button>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.slice(0, 3).map((project: any) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                linkToDetails={true}
-                showDeleteButton={true}
-                onDelete={handleDelete}
-                className="h-full"
-                usePlaceholder={true}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      
-      {/* Projects Overview */}
-      <div className="mb-8">
-        <div className="flex flex-row justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Projects Overview</h2>
-          <Link href="/dashboard/homeowner/new-project" className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
-            Create New Project
-          </Link>
-        </div>
-        
-        {/* Filtered Projects */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.map((project: any) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              linkToDetails={true}
-              showDeleteButton={true}
-              onDelete={handleDelete}
-              className="h-full"
-              usePlaceholder={true}
-            />
-          ))}
-        </div>
-      </div>
-      
-      {/* Quick Tips */}
-      <div className="bg-blue-50 rounded-xl p-6 mb-8">
-        <h2 className="text-xl font-bold mb-4">Tips for Getting Great Bids</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex items-start">
-            <div className="flex-shrink-0 bg-blue-100 rounded-full p-2 mr-3">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium">Be detailed in your project description</p>
-              <p className="text-sm text-gray-600">Detailed descriptions help contractors provide more accurate bids.</p>
-            </div>
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 bg-gray-50">
+            <button
+              onClick={() => setActiveTab("active")}
+              className={`px-6 py-3 text-sm font-medium relative ${
+                activeTab === "active"
+                  ? "text-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              } transition-colors duration-200`}
+            >
+              <span className="relative z-10">Active</span>
+              {activeTab === "active" && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-indigo-600"></span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("drafts")}
+              className={`px-6 py-3 text-sm font-medium relative ${
+                activeTab === "drafts"
+                  ? "text-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              } transition-colors duration-200`}
+            >
+              <span className="relative z-10">Drafts</span>
+              {activeTab === "drafts" && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-indigo-600"></span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("completed")}
+              className={`px-6 py-3 text-sm font-medium relative ${
+                activeTab === "completed"
+                  ? "text-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              } transition-colors duration-200`}
+            >
+              <span className="relative z-10">Completed</span>
+              {activeTab === "completed" && (
+                <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-blue-500 to-indigo-600"></span>
+              )}
+            </button>
           </div>
           
-          <div className="flex items-start">
-            <div className="flex-shrink-0 bg-blue-100 rounded-full p-2 mr-3">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium">Add photos of your project area</p>
-              <p className="text-sm text-gray-600">Photos help contractors understand the scope and requirements.</p>
-            </div>
-          </div>
-          
-          <div className="flex items-start">
-            <div className="flex-shrink-0 bg-blue-100 rounded-full p-2 mr-3">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium">Set realistic timelines</p>
-              <p className="text-sm text-gray-600">Be clear about your timeline expectations to get appropriate bids.</p>
-            </div>
-          </div>
-          
-          <div className="flex items-start">
-            <div className="flex-shrink-0 bg-blue-100 rounded-full p-2 mr-3">
-              <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-            </div>
-            <div>
-              <p className="font-medium">Be upfront about your budget</p>
-              <p className="text-sm text-gray-600">Setting a realistic budget range helps filter the right contractors.</p>
-            </div>
+          {/* Projects List */}
+          <div className="p-4">
+            {loading ? (
+              <div className="flex justify-center items-center h-40">
+                <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-200 border-t-blue-600"></div>
+              </div>
+            ) : filteredProjects.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map((project: any, index: number) => (
+                  <div 
+                    key={project.id} 
+                    className="animate-fade-in transform transition-all duration-300 hover:translate-y-[-4px] hover:shadow-md" 
+                    style={{ animationDelay: `${0.1 * (index + 1)}s` }}
+                  >
+                    <ProjectCard
+                      project={project}
+                      onDelete={handleDelete}
+                      linkToDetails={true}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-gradient-to-b from-gray-50 to-white rounded-lg border border-dashed border-gray-300">
+                <div className="bg-blue-50 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-1">No projects found</h3>
+                <p className="text-gray-500 mb-4">Get started by creating your first project</p>
+                <Link
+                  href="/dashboard/homeowner/new-project"
+                  className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-md font-medium shadow-sm hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 transform hover:translate-y-[-2px]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                  Create New Project
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>
