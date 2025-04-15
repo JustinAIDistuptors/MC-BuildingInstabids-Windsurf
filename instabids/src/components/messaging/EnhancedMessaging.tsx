@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { getContractorsForProject, getMessages, initializeMessagingSchema, sendMessage } from '@/lib/supabase/messaging';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { supabase } from '@/lib/supabase/client';
 
 interface EnhancedMessagingProps {
   projectId?: string;
@@ -30,9 +31,34 @@ interface Message {
   content: string;
   timestamp: string;
   isOwn: boolean;
+  attachments?: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    fileUrl: string;
+    fileSize: number;
+  }>;
 }
 
-export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps) {
+// Define bucket interface to fix TypeScript errors
+interface Bucket {
+  id: string;
+  name: string;
+  public: boolean;
+}
+
+// Define URL data interface
+interface UrlData {
+  publicUrl: string;
+}
+
+// Define URL response interface
+interface UrlResponse {
+  data: UrlData | null;
+  error: Error | null;
+}
+
+export default function EnhancedMessaging({ projectId = '' }: EnhancedMessagingProps) {
   const [contractors, setContractors] = useState<Contractor[]>([]);
   const [selectedContractorId, setSelectedContractorId] = useState<string>('');
   const [newMessage, setNewMessage] = useState<string>('');
@@ -41,6 +67,17 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
   const [sendingMessage, setSendingMessage] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [setupNeeded, setSetupNeeded] = useState<boolean>(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Debug mode
+  const [debugMode, setDebugMode] = useState<boolean>(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+
+  const addDebugLog = (message: string) => {
+    console.log(`[DEBUG] ${message}`);
+    setDebugLogs(prev => [...prev, `${new Date().toISOString().split('T')[1].split('.')[0]} - ${message}`]);
+  };
 
   useEffect(() => {
     async function fetchContractors() {
@@ -48,391 +85,605 @@ export default function EnhancedMessaging({ projectId }: EnhancedMessagingProps)
         setLoading(true);
         setError(null);
         
-        if (projectId) {
-          console.log('Fetching contractors for project:', projectId);
-          // Fetch real contractors for this project
-          const fetchedContractors = await getContractorsForProject(projectId);
-          console.log('Fetched contractors:', fetchedContractors);
-          
-          if (fetchedContractors && fetchedContractors.length > 0) {
-            // Type assertion to ensure compatibility
-            setContractors(fetchedContractors as Contractor[]);
-            // Safely access the first contractor's ID
-            if (fetchedContractors[0] && fetchedContractors[0].id) {
-              setSelectedContractorId(fetchedContractors[0].id);
-            }
-          } else {
-            // No contractors found for this project
-            setContractors([]);
-            setSelectedContractorId('');
-            setError("No contractors have bid on this project yet.");
-          }
-        } else {
-          // No project ID provided
-          setContractors([]);
-          setSelectedContractorId('');
-          setError("No project ID provided.");
+        if (!projectId) {
+          setError('No project ID provided');
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error('Error fetching contractors:', error);
-        setContractors([]);
-        setSelectedContractorId('');
         
-        // Check if the error indicates missing tables
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes("does not exist") || errorMsg.includes("relation") || errorMsg.includes("column")) {
+        // First check if messaging schema is initialized
+        const schemaInitialized = await initializeMessagingSchema();
+        
+        if (!schemaInitialized) {
           setSetupNeeded(true);
-          setError("Messaging system needs to be set up. Please contact support.");
-        } else {
-          setError("Failed to load contractors. Please try again later.");
+          setError('Messaging system needs to be set up');
+          setLoading(false);
+          return;
         }
+        
+        // Get contractors for this project
+        const contractorsData = await getContractorsForProject(projectId);
+        
+        if (!contractorsData || contractorsData.length === 0) {
+          setContractors([]);
+          setError('No contractors available for this project');
+          setLoading(false);
+          return;
+        }
+        
+        setContractors(contractorsData);
+        
+        // If there are contractors, select the first one and load messages
+        const firstContractorId = contractorsData[0].id;
+        setSelectedContractorId(firstContractorId);
+          
+        // Load messages for the first contractor
+        const messagesData = await getMessages(projectId, firstContractorId);
+        setMessages(prev => ({
+          ...prev,
+          [firstContractorId]: messagesData
+        }));
+      } catch (error: any) {
+        setError(error.message || 'An error occurred');
       } finally {
         setLoading(false);
       }
     }
-
+    
     fetchContractors();
-  }, [projectId]);
-
-  useEffect(() => {
-    const fetchMessages = async () => {
-      if (!selectedContractorId || !projectId) return;
+    
+    // Check bucket configuration in debug mode
+    if (debugMode) {
+      checkBucketConfiguration();
+    }
+  }, [projectId, debugMode]);
+  
+  // Function to check bucket configuration (debug mode)
+  const checkBucketConfiguration = async () => {
+    addDebugLog('Checking bucket configuration...');
+    
+    try {
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
       
-      setLoading(true);
+      if (bucketsError) {
+        addDebugLog(`Error listing buckets: ${bucketsError.message}`);
+        return;
+      }
       
-      try {
-        const fetchedMessages = await getMessages(projectId, selectedContractorId);
+      if (!buckets) {
+        addDebugLog('No buckets returned from API');
+        return;
+      }
+      
+      addDebugLog(`Found ${buckets.length} buckets:`);
+      
+      // Log each bucket
+      buckets.forEach((bucket: Bucket) => {
+        addDebugLog(`- ${bucket.name} (public: ${bucket.public})`);
+      });
+      
+      // Check if our target bucket exists
+      const bucketName = 'message-attachments';
+      const bucket = buckets.find((b: Bucket) => b.name === bucketName);
+      
+      if (bucket) {
+        addDebugLog(`"${bucketName}" bucket exists and is ${bucket.public ? 'public' : 'private'}`);
         
-        setMessages((prev) => ({
-          ...prev,
-          [selectedContractorId]: fetchedMessages,
-        }));
-      } catch (error) {
-        console.error('Error fetching messages:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load messages. Please try again.',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
+        // Try to list files in the bucket
+        const { data: files, error: filesError } = await supabase.storage
+          .from(bucketName)
+          .list();
+          
+        if (filesError) {
+          addDebugLog(`Error listing files in bucket: ${filesError.message}`);
+        } else if (files) {
+          addDebugLog(`Found ${files.length} files/folders in the bucket`);
+        }
+      } else {
+        addDebugLog(`"${bucketName}" bucket does not exist`);
       }
-    };
-
-    fetchMessages();
-  }, [selectedContractorId, projectId]);
-
-  useEffect(() => {
-    // Initialize the messaging schema when the component mounts
-    const initMessaging = async () => {
-      try {
-        await initializeMessagingSchema();
-      } catch (error) {
-        console.error('Error initializing messaging schema:', error);
-      }
-    };
-    
-    initMessaging();
-  }, []);
-
-  // Get messages for the selected contractor
-  const contractorMessages = selectedContractorId ? (messages[selectedContractorId] || []) : [];
-  const selectedContractor = contractors.find((c) => c.id === selectedContractorId) || null;
-
-  // Handle sending a message
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!selectedContractorId || !newMessage.trim() || !projectId) {
+    } catch (error: any) {
+      addDebugLog(`Error checking bucket configuration: ${error.message}`);
+    }
+  };
+  
+  // Function to test file upload directly (debug mode)
+  const testFileUpload = async () => {
+    if (selectedFiles.length === 0) {
+      addDebugLog('No files selected for test upload');
       return;
     }
     
-    setSendingMessage(true);
+    // We've already checked that selectedFiles has at least one element
+    const file = selectedFiles[0];
+    
+    if (!file) {
+      addDebugLog('File is undefined');
+      return;
+    }
+    
+    addDebugLog(`Testing direct file upload for ${file.name} (${file.size} bytes, type: ${file.type})`);
     
     try {
-      console.log('Sending message to contractor:', selectedContractorId, 'for project:', projectId);
+      // First, check if the bucket exists
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      
+      if (bucketsError) {
+        addDebugLog(`Error listing buckets: ${bucketsError.message}`);
+        return;
+      }
+      
+      const bucketName = 'message-attachments';
+      const bucketExists = buckets && buckets.some((bucket: Bucket) => bucket.name === bucketName);
+      
+      if (!bucketExists) {
+        addDebugLog(`Bucket "${bucketName}" does not exist`);
+        return;
+      }
+      
+      addDebugLog(`Bucket "${bucketName}" exists, proceeding with file upload`);
+      
+      // Generate a test file path
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const filePath = `test-uploads/${timestamp}_${safeName}`;
+      
+      addDebugLog(`Uploading to path: ${filePath}`);
+      
+      // Upload the file
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(bucketName)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
+        
+      if (uploadError) {
+        addDebugLog(`Error uploading file: ${uploadError.message}`);
+        toast({
+          title: 'Upload Error',
+          description: `Failed to upload file: ${uploadError.message}`,
+          variant: 'destructive',
+        });
+      } else if (!uploadData) {
+        addDebugLog('Upload completed but no data returned');
+        toast({
+          title: 'Upload Warning',
+          description: 'Upload completed but no data was returned',
+          variant: 'destructive',
+        });
+      } else {
+        addDebugLog(`File uploaded successfully to ${uploadData.path}`);
+        
+        // Get public URL
+        const { data: urlData, error: urlError } = await supabase.storage
+          .from(bucketName)
+          .getPublicUrl(filePath) as UrlResponse;
+          
+        if (urlError) {
+          addDebugLog(`Error getting public URL: ${urlError.message}`);
+        } else if (urlData) {
+          addDebugLog(`Public URL: ${urlData.publicUrl}`);
+          
+          // Try to fetch the file to verify it's accessible
+          try {
+            const response = await fetch(urlData.publicUrl, { method: 'HEAD' });
+            addDebugLog(`File accessibility check: ${response.status} ${response.statusText}`);
+          } catch (fetchError: any) {
+            addDebugLog(`Error checking file accessibility: ${fetchError.message}`);
+          }
+        }
+        
+        toast({
+          title: 'Upload Success',
+          description: 'File uploaded successfully',
+        });
+      }
+    } catch (error: any) {
+      addDebugLog(`Error in test upload: ${error.message}`);
+      toast({
+        title: 'Upload Error',
+        description: `An unexpected error occurred: ${error.message}`,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Function to handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    
+    if (!files || files.length === 0) {
+      return;
+    }
+    
+    // Convert FileList to array and store
+    const fileArray = Array.from(files);
+    setSelectedFiles(fileArray);
+    
+    if (debugMode) {
+      fileArray.forEach(file => {
+        addDebugLog(`Selected file: ${file.name} (${file.size} bytes, type: ${file.type})`);
+      });
+    }
+  };
+
+  // Function to remove a selected file
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Function to select a contractor and load their messages
+  const selectContractor = async (contractorId: string) => {
+    setSelectedContractorId(contractorId);
+    
+    // Check if we already have messages for this contractor
+    if (!messages[contractorId]) {
+      try {
+        if (!projectId) {
+          setError('No project ID provided');
+          return;
+        }
+        
+        // Load messages for this contractor
+        const messagesData = await getMessages(projectId, contractorId);
+        setMessages(prev => ({
+          ...prev,
+          [contractorId]: messagesData
+        }));
+      } catch (error: any) {
+        setError(error.message || 'An error occurred loading messages');
+      }
+    }
+  };
+
+  // Function to send a message
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() && selectedFiles.length === 0) {
+      toast({
+        title: 'Error',
+        description: 'Please enter a message or select a file to send',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    if (!projectId || !selectedContractorId) {
+      toast({
+        title: 'Error',
+        description: 'Missing project ID or contractor ID',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    try {
+      setSendingMessage(true);
+      
+      if (debugMode) {
+        addDebugLog(`Sending message to contractor ${selectedContractorId} with ${selectedFiles.length} attachments`);
+      }
+      
       // Send the message
-      const success = await sendMessage(projectId, selectedContractorId, newMessage);
+      const success = await sendMessage(
+        projectId,
+        selectedContractorId,
+        newMessage.trim(),
+        selectedFiles
+      );
       
       if (success) {
-        // Add the new message to the state
-        setMessages((prev) => ({
-          ...prev,
-          [selectedContractorId]: [...(prev[selectedContractorId] || []), { id: 'new', senderId: 'me', content: newMessage, timestamp: new Date().toISOString(), isOwn: true } as Message],
-        }));
-
+        // Clear the message input
         setNewMessage('');
+        setSelectedFiles([]);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
         
-        // Refresh messages after a short delay to get the server-generated message
-        setTimeout(() => {
-          const fetchMessages = async () => {
-            if (!selectedContractorId || !projectId) return;
-            
-            setLoading(true);
-            
-            try {
-              const fetchedMessages = await getMessages(projectId, selectedContractorId);
-              
-              setMessages((prev) => ({
-                ...prev,
-                [selectedContractorId]: fetchedMessages,
-              }));
-            } catch (error) {
-              console.error('Error fetching messages:', error);
-              toast({
-                title: 'Error',
-                description: 'Failed to load messages. Please try again.',
-                variant: 'destructive',
-              });
-            } finally {
-              setLoading(false);
-            }
-          };
-
-          fetchMessages();
-        }, 1000);
+        // Reload messages for this contractor
+        const messagesData = await getMessages(projectId, selectedContractorId);
+        setMessages(prev => ({
+          ...prev,
+          [selectedContractorId]: messagesData
+        }));
+        
+        if (debugMode) {
+          addDebugLog('Message sent successfully');
+        }
       } else {
         toast({
           title: 'Error',
-          description: 'Failed to send message. Please try again.',
+          description: 'Failed to send message',
           variant: 'destructive',
         });
+        
+        if (debugMode) {
+          addDebugLog('Failed to send message');
+        }
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'An error occurred while sending your message.',
+        description: error.message || 'An error occurred',
         variant: 'destructive',
       });
+      
+      if (debugMode) {
+        addDebugLog(`Error sending message: ${error.message}`);
+      }
     } finally {
       setSendingMessage(false);
     }
   };
 
-  // Format timestamp
+  // Function to format timestamp
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Get status badge color
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'accepted':
-        return 'bg-green-100 text-green-800';
-      case 'rejected':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  // Function to check if a file is an image
+  const isImageFile = (fileType: string) => {
+    return fileType.startsWith('image/');
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[300px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (setupNeeded) {
     return (
-      <Alert variant="destructive" className="mb-6">
+      <Alert variant="destructive" className="mb-4">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Messaging System Setup Required</AlertTitle>
+        <AlertTitle>Setup Required</AlertTitle>
         <AlertDescription>
-          <p className="mb-2">The messaging system needs to be set up in your Supabase database.</p>
-          <p className="mb-4">Please contact the development team to set up the required database tables.</p>
-          <details className="text-sm">
-            <summary className="cursor-pointer font-medium">Technical Details</summary>
-            <p className="mt-2">The following tables need to be created:</p>
-            <ul className="list-disc pl-5 mt-1 space-y-1">
-              <li>messaging.messages</li>
-              <li>messaging.attachments</li>
-            </ul>
-            <p className="mt-2">Make sure the bids table has a project_id column that references your projects.</p>
-          </details>
+          The messaging system needs to be set up. Please contact support.
         </AlertDescription>
       </Alert>
     );
   }
 
-  if (error && contractors.length === 0) {
+  if (error) {
     return (
-      <Alert variant="default" className="mb-6">
+      <Alert variant="destructive" className="mb-4">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>No Contractors Available</AlertTitle>
-        <AlertDescription>
-          {error}
-        </AlertDescription>
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
   }
 
   return (
-    <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-4">
-      {/* Contractor List */}
+    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Contractors List */}
       <div className="md:col-span-1">
-        <Card className="h-full">
-          <CardHeader className="pb-3">
+        <Card>
+          <CardHeader>
             <CardTitle>Contractors</CardTitle>
           </CardHeader>
           <CardContent>
             {contractors.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No contractors available for this project yet.
-              </div>
+              <p className="text-muted-foreground">No contractors available</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {contractors.map((contractor) => (
-                  <div
+                  <Button
                     key={contractor.id}
-                    className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                      selectedContractorId === contractor.id
-                        ? 'bg-blue-50 border-blue-200 border'
-                        : 'hover:bg-gray-50 border border-transparent'
-                    }`}
-                    onClick={() => setSelectedContractorId(contractor.id)}
+                    variant={selectedContractorId === contractor.id ? 'default' : 'outline'}
+                    className="w-full justify-start"
+                    onClick={() => selectContractor(contractor.id)}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg">
-                        {contractor.avatar || '👤'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium">{contractor.name}</div>
-                            <div className="text-xs text-gray-500">{contractor.company || 'Independent Contractor'}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-medium">
-                              {contractor.bidAmount !== undefined
-                                ? `$${contractor.bidAmount.toLocaleString()}`
-                                : 'No bid yet'}
-                            </div>
-                            <div
-                              className={`text-xs px-2 py-0.5 rounded-full inline-block mt-1 ${getStatusColor(
-                                contractor.status
-                              )}`}
-                            >
-                              {contractor.status}
-                            </div>
-                          </div>
-                        </div>
-                        {messages[contractor.id]?.length > 0 && (
-                          <div className="text-xs text-gray-500 mt-1 truncate">
-                            {messages[contractor.id]?.[messages[contractor.id]?.length - 1]?.content ?? ''}
-                          </div>
-                        )}
-                      </div>
+                    <div className="truncate">
+                      <span className="font-medium">{contractor.name}</span>
+                      {contractor.company && (
+                        <span className="text-xs text-muted-foreground block truncate">
+                          {contractor.company}
+                        </span>
+                      )}
                     </div>
-                  </div>
+                  </Button>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+        
+        {/* Debug Controls */}
+        <div className="mt-4">
+          <Button 
+            variant="outline" 
+            className="w-full"
+            onClick={() => setDebugMode(!debugMode)}
+          >
+            {debugMode ? 'Disable Debug Mode' : 'Enable Debug Mode'}
+          </Button>
+          
+          {debugMode && (
+            <div className="mt-2 space-y-2">
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={checkBucketConfiguration}
+              >
+                Check Bucket Config
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={testFileUpload}
+                disabled={selectedFiles.length === 0}
+              >
+                Test File Upload
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Message Thread */}
-      <div className="md:col-span-2">
+      {/* Messages */}
+      <div className="md:col-span-3">
         <Card className="flex flex-col h-[600px]">
-          <CardHeader className="pb-3 border-b">
-            {selectedContractor ? (
-              <div className="flex items-center">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg mr-2">
-                  {selectedContractor?.avatar ?? '👤'}
-                </div>
-                <div>
-                  <CardTitle>{selectedContractor?.name ?? ''}</CardTitle>
-                  <div className="text-xs text-gray-500">{selectedContractor?.company ?? 'Independent Contractor'}</div>
-                </div>
-              </div>
-            ) : (
-              <CardTitle>Select a contractor to start messaging</CardTitle>
-            )}
+          <CardHeader>
+            <CardTitle>
+              {selectedContractorId
+                ? `Messages with ${contractors.find(c => c.id === selectedContractorId)?.name || 'Contractor'}`
+                : 'Select a contractor'}
+            </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 overflow-y-auto py-4 px-4 space-y-4">
-            {error && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            
-            {!selectedContractor ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                Select a contractor to view messages
-              </div>
-            ) : contractorMessages.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                No messages yet. Start the conversation!
-              </div>
-            ) : (
-              contractorMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-                >
-                  {!message.isOwn && selectedContractor && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-lg mr-2 self-end">
-                      {selectedContractor.avatar ?? '👤'}
-                    </div>
-                  )}
-                  <div
-                    className={`max-w-[75%] rounded-lg p-3 ${
-                      message.isOwn
-                        ? 'bg-blue-500 text-white rounded-tr-none'
-                        : 'bg-gray-100 rounded-tl-none'
-                    }`}
-                  >
-                    <p className="text-sm">{message.content}</p>
+          <CardContent className="flex-1 overflow-hidden flex flex-col">
+            {/* Messages List */}
+            <div className="flex-1 overflow-y-auto mb-4 space-y-4">
+              {selectedContractorId && messages[selectedContractorId]?.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No messages yet. Start the conversation!
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {selectedContractorId && messages[selectedContractorId]?.map((message) => (
                     <div
-                      className={`text-xs mt-1 ${
-                        message.isOwn ? 'text-blue-100' : 'text-gray-500'
+                      key={message.id}
+                      className={`flex ${
+                        message.isOwn ? 'justify-end' : 'justify-start'
                       }`}
                     >
-                      {formatTimestamp(message.timestamp)}
+                      <div
+                        className={`max-w-[80%] rounded-lg p-3 ${
+                          message.isOwn
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted'
+                        }`}
+                      >
+                        <div className="mb-1">{message.content}</div>
+                        
+                        {/* Attachments */}
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {message.attachments.map((attachment) => (
+                              <div key={attachment.id} className="flex items-center gap-2">
+                                {isImageFile(attachment.fileType) ? (
+                                  <div className="relative h-32 w-full">
+                                    <img
+                                      src={attachment.fileUrl}
+                                      alt={attachment.fileName}
+                                      className="rounded-md object-contain h-full w-full"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 bg-background/50 rounded p-2">
+                                    <span className="text-sm truncate">{attachment.fileName}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        
+                        <div className="text-xs opacity-70 text-right mt-1">
+                          {formatTimestamp(message.timestamp)}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  {message.isOwn && (
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-lg ml-2 self-end">
-                      👤
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))
+              )}
+            </div>
+
+            {/* Message Input */}
+            {selectedContractorId && (
+              <div className="space-y-2">
+                {/* Selected Files Preview */}
+                {selectedFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center gap-1 bg-muted rounded-full pl-2 pr-1 py-1">
+                        {file.type.startsWith('image/') ? (
+                          <span className="h-3 w-3">📷</span>
+                        ) : (
+                          <span className="h-3 w-3">📄</span>
+                        )}
+                        <span className="text-xs truncate max-w-[100px]">{file.name}</span>
+                        <Button
+                          variant="ghost"
+                          className="h-4 w-4 rounded-full"
+                          onClick={() => removeFile(index)}
+                        >
+                          <span className="h-3 w-3">✕</span>
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                <div className="flex gap-2">
+                  <Textarea
+                    placeholder="Type your message..."
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    className="min-h-[80px]"
+                  />
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      multiple
+                    />
+                    <Button
+                      variant="outline"
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <span className="h-4 w-4">📎</span>
+                    </Button>
+                  </div>
+                  
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={sendingMessage || (!newMessage.trim() && selectedFiles.length === 0)}
+                  >
+                    {sendingMessage ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send'
+                    )}
+                  </Button>
+                </div>
+              </div>
             )}
           </CardContent>
-          <div className="p-4 border-t mt-auto">
-            <form onSubmit={handleSendMessage} className="flex-1 flex space-x-2">
-              <Textarea
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type your message here..."
-                className="flex-1 min-h-[80px]"
-                disabled={sendingMessage || !selectedContractorId}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !sendingMessage) {
-                    e.preventDefault();
-                    handleSendMessage(e);
-                  }
-                }}
-              />
-              <Button 
-                type="submit" 
-                disabled={sendingMessage || !newMessage.trim() || !selectedContractorId}
-                className="self-end"
-              >
-                {sendingMessage ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send'}
-              </Button>
-            </form>
-          </div>
         </Card>
+        
+        {/* Debug Logs */}
+        {debugMode && (
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Debug Logs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="bg-muted p-2 rounded h-40 overflow-y-auto font-mono text-xs">
+                {debugLogs.length === 0 ? (
+                  <p className="text-muted-foreground">No logs yet</p>
+                ) : (
+                  debugLogs.map((log, index) => (
+                    <div key={index} className="mb-1">{log}</div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

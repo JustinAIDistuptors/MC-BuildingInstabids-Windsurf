@@ -244,19 +244,19 @@ export async function getContractorsWithAliases(
       }
       
       // Map contractors to their aliases
-      const contractorsWithAliases: ContractorWithAlias[] = bids.map((contractor, index) => {
+      const contractorsWithAliases: ContractorWithAlias[] = bids.map((bid, index) => {
         const alias = newAliases[index]?.alias || String.fromCharCode(65 + index); // A, B, C, etc.
         
         // Find bid amount if available
-        const bid = bids.find(b => b.contractor_id === contractor.contractor_id);
+        const bidAmount = bids.find(b => b.contractor_id === bid.contractor_id)?.amount;
         
         return {
-          id: contractor.contractor_id,
-          full_name: contractor.contractors?.full_name || '',
-          company_name: contractor.contractors?.company_name || undefined,
+          id: bid.contractor_id,
+          full_name: bid.contractors?.full_name || '',
+          company_name: bid.contractors?.company_name || undefined,
           alias,
-          bid_amount: bid?.amount || undefined,
-          avatar_url: contractor.contractors?.avatar_url || undefined
+          bid_amount: bidAmount || undefined,
+          avatar_url: bid.contractors?.avatar_url || undefined
         };
       });
       
@@ -297,19 +297,24 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
       return true; // No files to attach
     }
     
+    console.log(`Processing ${files.length} attachments for message ${messageId}`);
+    
     // Verify storage bucket exists
     const { data: buckets } = await supabase.storage.listBuckets();
-    const attachmentBucket = buckets?.find(b => b.name === 'attachments');
+    console.log('Available buckets:', buckets?.map(b => `${b.name} (public: ${b.public})`).join(', '));
+    
+    const BUCKET_NAME = 'message-attachments';
+    const attachmentBucket = buckets?.find(b => b.name === BUCKET_NAME);
     
     if (!attachmentBucket) {
-      console.error('Attachments bucket not found. Creating bucket...');
-      const { error: createBucketError } = await supabase.storage.createBucket('attachments', {
+      console.error(`${BUCKET_NAME} bucket not found. Creating bucket...`);
+      const { error: createBucketError } = await supabase.storage.createBucket(BUCKET_NAME, {
         public: true,
         fileSizeLimit: 10485760, // 10MB
       });
       
       if (createBucketError) {
-        console.error('Error creating attachments bucket:', createBucketError);
+        console.error(`Error creating ${BUCKET_NAME} bucket:`, createBucketError);
         toast({
           title: 'Storage Error',
           description: 'Could not create storage bucket for attachments.',
@@ -317,6 +322,8 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
         });
         return false;
       }
+    } else {
+      console.log(`Using existing bucket: ${BUCKET_NAME} (public: ${attachmentBucket.public})`);
     }
     
     const attachments = [];
@@ -337,11 +344,13 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
       // Create a unique file path with timestamp to prevent collisions
       const timestamp = new Date().getTime();
       const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // Sanitize filename
-      const filePath = `message-attachments/${messageId}/${timestamp}_${safeName}`;
+      const filePath = `uploads/${messageId}/${timestamp}_${safeName}`;
+      
+      console.log(`Uploading file: ${file.name} (${file.size} bytes) to path: ${filePath}`);
       
       // Upload the file
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('attachments')
+        .from(BUCKET_NAME)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
@@ -357,9 +366,11 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
         continue;
       }
       
+      console.log('File uploaded successfully:', filePath);
+      
       // Get the public URL for the file
       const { data: urlData } = await supabase.storage
-        .from('attachments')
+        .from(BUCKET_NAME)
         .getPublicUrl(filePath);
       
       if (!urlData || !urlData.publicUrl) {
@@ -367,24 +378,29 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
         continue;
       }
       
+      console.log('Public URL:', urlData.publicUrl);
+      
       // Add attachment to the list
       attachments.push({
         message_id: messageId,
         file_name: file.name,
+        file_path: filePath,
         file_size: file.size,
-        file_type: file.type,
-        file_url: urlData.publicUrl
+        file_type: file.type
       });
       
       // Log successful upload for verification
-      console.log(`File uploaded successfully: ${file.name} -> ${urlData.publicUrl}`);
+      console.log(`File attachment record created for ${file.name}`);
     }
     
     // Insert attachments into the database
     if (attachments.length > 0) {
-      const { error: insertError } = await supabase
+      console.log(`Inserting ${attachments.length} attachment records into message_attachments table`);
+      
+      const { data: insertData, error: insertError } = await supabase
         .from('message_attachments')
-        .insert(attachments);
+        .insert(attachments)
+        .select();
       
       if (insertError) {
         console.error('Error inserting attachments:', insertError);
@@ -395,6 +411,8 @@ export async function handleFileAttachments(messageId: string, files: File[]): P
         });
         return false;
       }
+      
+      console.log('Attachment records inserted successfully:', insertData);
       
       // Verify attachments were saved correctly
       const { data: savedAttachments, error: verifyError } = await supabase

@@ -12,6 +12,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase credentials. Please check your .env.local file.');
 }
 
+// Flag to indicate if we're using development fallbacks
+export const isUsingDevFallback = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_DEV_FALLBACKS === 'true';
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
@@ -50,11 +53,7 @@ export async function ensureAuthentication() {
 
 // Initialize authentication on load
 if (typeof window !== 'undefined') {
-  ensureAuthentication().then(success => {
-    if (success) {
-      console.log('Supabase authentication initialized');
-    } else {
-      console.warn('Supabase authentication initialization failed');
-    }
+  ensureAuthentication().catch(error => {
+    console.error('Failed to initialize authentication:', error);
   });
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import EnhancedMessaging from '@/components/messaging/EnhancedMessaging';
+import { DebugMessaging } from '@/components/debug-messaging';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,7 @@ export default function MessagingTestPage() {
   const [errorLog, setErrorLog] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('component');
   const [projectId, setProjectId] = useState('test-project-1');
+  const [debugEnabled, setDebugEnabled] = useState(false);
 
   // Reset component
   const resetComponent = () => {
@@ -73,6 +75,8 @@ export default function MessagingTestPage() {
                   </div>
                 }
               >
+                {/* Debug Messaging component is added here but only renders when debug is enabled */}
+                {debugEnabled && <DebugMessaging />}
                 <EnhancedMessaging projectId={projectId} />
               </ErrorBoundary>
             ) : (
@@ -98,6 +102,13 @@ export default function MessagingTestPage() {
                     </Button>
                     <Button onClick={clearStorage} variant="outline" className="ml-2">
                       Clear LocalStorage
+                    </Button>
+                    <Button 
+                      onClick={() => setDebugEnabled(!debugEnabled)} 
+                      variant={debugEnabled ? "default" : "outline"} 
+                      className="ml-2"
+                    >
+                      {debugEnabled ? "Disable Debug" : "Enable Debug"}
                     </Button>
                   </div>
                 </div>
@@ -149,27 +160,25 @@ export default function MessagingTestPage() {
                 <h3 className="text-lg font-medium mb-2">About This Component</h3>
                 <p className="text-gray-700">
                   This is a simplified version of the contractor messaging component that uses the ContractorMessagingService
-                  to handle data operations. The component supports:
+                  to communicate with contractors about projects. It demonstrates the core functionality of the messaging system.
                 </p>
-                <ul className="list-disc pl-5 mt-2 space-y-1 text-gray-700">
-                  <li>Individual and group messaging</li>
-                  <li>Contractor aliases (A, B, C) for anonymity</li>
-                  <li>Real-time message updates</li>
-                  <li>Proper error handling</li>
-                </ul>
               </div>
               
               <div>
-                <h3 className="text-lg font-medium mb-2">Implementation Details</h3>
+                <h3 className="text-lg font-medium mb-2">Debug Mode</h3>
                 <p className="text-gray-700">
-                  The component follows a clean architecture pattern:
+                  When debug mode is enabled, the DebugMessaging component will monitor and log all file upload operations
+                  and message attachments. This helps diagnose issues with file uploads to the Supabase storage bucket.
                 </p>
-                <ul className="list-disc pl-5 mt-2 space-y-1 text-gray-700">
-                  <li>UI components are focused on presentation</li>
-                  <li>All data operations go through the service layer</li>
-                  <li>Service layer abstracts localStorage and Supabase backends</li>
-                  <li>Error boundaries prevent white screen issues</li>
-                </ul>
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                  <h4 className="font-medium text-yellow-800">Debugging Tips:</h4>
+                  <ul className="list-disc pl-5 mt-1 text-sm text-yellow-700">
+                    <li>Enable debug mode before testing file uploads</li>
+                    <li>Check the browser console for detailed logs</li>
+                    <li>Verify that the 'message-attachments' bucket exists in Supabase</li>
+                    <li>Test with small image files first (under 1MB)</li>
+                  </ul>
+                </div>
               </div>
             </CardContent>
           </Card>

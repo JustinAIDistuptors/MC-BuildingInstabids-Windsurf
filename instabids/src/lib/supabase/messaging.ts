@@ -126,6 +126,13 @@ export async function getMessages(
   content: string;
   timestamp: string;
   isOwn: boolean;
+  attachments?: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    fileUrl: string;
+    fileSize: number;
+  }>;
 }>> {
   try {
     // Get the current user ID
@@ -139,7 +146,7 @@ export async function getMessages(
     
     // Clean the project ID
     const cleanedProjectId = cleanProjectId(projectId);
-    console.log('Using project ID for messages query:', cleanedProjectId);
+    console.log('Using project ID for fetching messages:', cleanedProjectId);
     
     // Initialize messaging schema if needed
     const schemaInitialized = await initializeMessagingSchema();
@@ -149,30 +156,70 @@ export async function getMessages(
       return [];
     }
     
-    // Query messages with proper handling of project ID
-    const { data, error } = await supabase
+    // Get messages between the current user and the contractor
+    const { data: messages, error } = await supabase
       .from('messages')
       .select('*')
       .eq('project_id', cleanedProjectId)
       .or(`sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId}`)
       .or(`sender_id.eq.${contractorId},recipient_id.eq.${contractorId}`)
       .order('created_at', { ascending: true });
-    
+      
     if (error) {
       console.error('Error fetching messages:', error);
       return [];
     }
     
-    // Transform the data to match the format expected by the EnhancedMessaging component
-    return (data || []).map((msg: any) => ({
-      id: msg.id,
-      senderId: msg.sender_id,
-      content: msg.content,
-      timestamp: msg.created_at,
-      isOwn: msg.sender_id === currentUserId
-    }));
+    // Get all message IDs
+    const messageIds = messages.map((message: any) => message.id);
+    
+    // Get attachments for all messages
+    let attachments: any[] = [];
+    if (messageIds.length > 0) {
+      const { data: attachmentsData, error: attachmentsError } = await supabase
+        .from('message_attachments')
+        .select('*')
+        .in('message_id', messageIds);
+        
+      if (attachmentsError) {
+        console.error('Error fetching attachments:', attachmentsError);
+      } else {
+        attachments = attachmentsData || [];
+        console.log(`Fetched ${attachments.length} attachments for ${messageIds.length} messages`);
+      }
+    }
+    
+    // Transform the messages
+    return messages.map((message: any) => {
+      // Get attachments for this message
+      const messageAttachments = attachments
+        .filter((attachment: any) => attachment.message_id === message.id)
+        .map((attachment: any) => {
+          // Generate the public URL for the file
+          const { data: urlData } = supabase.storage
+            .from('message-attachments')
+            .getPublicUrl(attachment.file_path);
+          
+          return {
+            id: attachment.id,
+            fileName: attachment.file_name,
+            fileType: attachment.file_type,
+            fileUrl: urlData?.publicUrl || '',
+            fileSize: attachment.file_size
+          };
+        });
+      
+      return {
+        id: message.id,
+        senderId: message.sender_id,
+        content: message.content,
+        timestamp: message.created_at,
+        isOwn: message.sender_id === currentUserId,
+        attachments: messageAttachments.length > 0 ? messageAttachments : []
+      };
+    });
   } catch (error) {
-    console.error('Error in getMessages:', error);
+    console.error('Error getting messages:', error);
     return [];
   }
 }
@@ -332,6 +379,80 @@ export async function sendMessage(
       return false;
     }
     
+    // Handle file uploads if provided
+    let attachmentPaths: string[] = [];
+    
+    if (files && files.length > 0) {
+      console.log(`Processing ${files.length} file attachments...`);
+      
+      // Check if the bucket exists
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      
+      if (bucketsError) {
+        console.error('Error listing buckets:', bucketsError);
+        throw new Error(`Error listing buckets: ${bucketsError.message}`);
+      }
+      
+      const BUCKET_NAME = 'message-attachments';
+      const bucketExists = buckets.some(bucket => bucket.name === BUCKET_NAME);
+      
+      if (!bucketExists) {
+        console.error(`Bucket "${BUCKET_NAME}" not found. Available buckets:`, buckets.map(b => b.name).join(', '));
+        throw new Error(`Bucket "${BUCKET_NAME}" not found`);
+      }
+      
+      console.log(`Bucket "${BUCKET_NAME}" exists, proceeding with file uploads`);
+      
+      for (const file of files) {
+        if (!file) {
+          console.error('File is undefined or null, skipping');
+          continue;
+        }
+        
+        // Upload the file to storage
+        const timestamp = Date.now();
+        const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // Sanitize filename
+        const fileName = `${timestamp}-${safeName}`;
+        const filePath = `uploads/${cleanedProjectId}/${fileName}`;
+        
+        console.log(`Uploading file: ${fileName} (${file.size} bytes, type: ${file.type}) to path: ${filePath} in bucket: ${BUCKET_NAME}`);
+        
+        try {
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .upload(filePath, file, {
+              cacheControl: '3600',
+              upsert: true
+            });
+            
+          if (uploadError) {
+            console.error('Error uploading file:', uploadError);
+            throw new Error(`Error uploading file: ${uploadError.message}`);
+          }
+          
+          if (!uploadData) {
+            console.error('Upload completed but no data returned');
+            throw new Error('Upload completed but no data returned');
+          }
+          
+          console.log('File uploaded successfully:', uploadData.path);
+          
+          // Verify the file exists by getting its public URL
+          const { data: urlData } = supabase.storage
+            .from(BUCKET_NAME)
+            .getPublicUrl(filePath);
+            
+          console.log('File public URL:', urlData?.publicUrl);
+          
+          // Add the file path to the list of attachments
+          attachmentPaths.push(filePath);
+        } catch (uploadErr) {
+          console.error('Exception during file upload:', uploadErr);
+          return false;
+        }
+      }
+    }
+    
     // Insert the message
     const { data: messageData, error: messageError } = await supabase
       .from('messages')
@@ -348,50 +469,34 @@ export async function sendMessage(
       return false;
     }
     
-    // Handle file uploads if provided
-    if (files && files.length > 0 && messageData && messageData.length > 0) {
+    console.log('Message inserted successfully:', messageData[0].id);
+    
+    // Insert attachments if any
+    if (attachmentPaths.length > 0 && messageData && messageData.length > 0) {
       const messageId = messageData[0].id;
+      console.log(`Adding ${attachmentPaths.length} attachments to message ${messageId}`);
       
-      for (const file of files) {
-        // Upload the file to storage
-        const fileName = `${Date.now()}-${file.name}`;
-        const filePath = `messages/${messageId}/${fileName}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('attachments')
-          .upload(filePath, file);
-          
-        if (uploadError) {
-          console.error('Error uploading file:', uploadError);
-          continue;
-        }
-        
-        // Get the public URL for the file
-        const { data: urlData } = supabase.storage
-          .from('attachments')
-          .getPublicUrl(filePath);
-          
-        const fileUrl = urlData?.publicUrl;
-        
-        if (!fileUrl) {
-          console.error('Failed to get public URL for file');
-          continue;
-        }
-        
-        // Insert attachment record
-        const { error: attachmentError } = await supabase
-          .from('attachments')
-          .insert({
-            message_id: messageId,
-            file_name: fileName,
-            file_size: file.size,
-            file_type: file.type,
-            file_url: fileUrl
-          });
-        
-        if (attachmentError) {
-          console.error('Error inserting attachment record:', attachmentError);
-        }
+      const attachments = attachmentPaths.map(path => ({
+        message_id: messageId,
+        file_name: path.split('/').pop() || '',
+        file_path: path,
+        file_type: path.endsWith('.jpg') || path.endsWith('.jpeg') ? 'image/jpeg' :
+                  path.endsWith('.png') ? 'image/png' :
+                  path.endsWith('.pdf') ? 'application/pdf' :
+                  'application/octet-stream',
+        file_size: files?.find(f => path.includes(f.name.replace(/[^a-zA-Z0-9.-]/g, '_')))?.size || 0
+      }));
+      
+      const { data: attachmentData, error: attachmentError } = await supabase
+        .from('message_attachments')
+        .insert(attachments)
+        .select();
+      
+      if (attachmentError) {
+        console.error('Error inserting attachments:', attachmentError);
+        // Continue anyway, the message was sent
+      } else {
+        console.log(`${attachmentData.length} attachment records created successfully`);
       }
     }
     
@@ -458,6 +563,77 @@ export async function getHomeownerForProject(projectId: string): Promise<string 
 }
 
 /**
+ * Get a message by ID
+ */
+export async function getMessageById(messageId: string): Promise<{
+  id: string;
+  senderId: string;
+  recipientId: string;
+  content: string;
+  timestamp: string;
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    fileUrl: string;
+    fileSize: number;
+  }>;
+} | null> {
+  try {
+    // Get the message
+    const { data: message, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('id', messageId)
+      .single();
+      
+    if (error) {
+      console.error('Error fetching message:', error);
+      return null;
+    }
+    
+    // Get attachments for this message from the new message_attachments table
+    const { data: attachments, error: attachmentsError } = await supabase
+      .from('message_attachments')
+      .select('*')
+      .eq('message_id', messageId);
+      
+    if (attachmentsError) {
+      console.error('Error fetching attachments:', attachmentsError);
+    }
+    
+    // Transform the attachments data
+    const formattedAttachments = (attachments || []).map((attachment: any) => {
+      // Generate the public URL for the file
+      const { data: urlData } = supabase.storage
+        .from('message-attachments')
+        .getPublicUrl(attachment.file_path);
+      
+      return {
+        id: attachment.id,
+        fileName: attachment.file_name,
+        fileType: attachment.file_type,
+        fileUrl: urlData?.publicUrl || '',
+        fileSize: attachment.file_size
+      };
+    });
+    
+    // Transform the data
+    return {
+      id: message.id,
+      senderId: message.sender_id,
+      recipientId: message.recipient_id,
+      content: message.content,
+      timestamp: message.created_at,
+      attachments: formattedAttachments
+    };
+  } catch (error) {
+    console.error('Error getting message by ID:', error);
+    return null;
+  }
+}
+
+/**
  * Subscribe to new messages
  */
 export function subscribeToMessages(
@@ -518,62 +694,50 @@ export function subscribeToMessages(
 }
 
 /**
- * Get a message by ID
+ * Subscribe to new message attachments
  */
-export async function getMessageById(messageId: string): Promise<{
-  id: string;
-  senderId: string;
-  recipientId: string;
-  content: string;
-  timestamp: string;
-  attachments: Array<{
+export function subscribeToMessageAttachments(
+  projectId: string,
+  contractorId: string,
+  callback: (attachment: {
     id: string;
     fileName: string;
     fileType: string;
     fileUrl: string;
     fileSize: number;
-  }>;
-} | null> {
-  try {
-    // Get the message
-    const { data: message, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('id', messageId)
-      .single();
-      
-    if (error) {
-      console.error('Error fetching message:', error);
-      return null;
-    }
-    
-    // Get attachments for this message
-    const { data: attachments, error: attachmentsError } = await supabase
-      .from('attachments')
-      .select('*')
-      .eq('message_id', messageId);
-      
-    if (attachmentsError) {
-      console.error('Error fetching attachments:', attachmentsError);
-    }
-    
-    // Transform the data
-    return {
-      id: message.id,
-      senderId: message.sender_id,
-      recipientId: message.recipient_id,
-      content: message.content,
-      timestamp: message.created_at,
-      attachments: (attachments || []).map((attachment: any) => ({
-        id: attachment.id,
-        fileName: attachment.file_name,
-        fileType: attachment.file_type,
-        fileUrl: attachment.file_url,
-        fileSize: attachment.file_size
-      }))
-    };
-  } catch (error) {
-    console.error('Error in getMessageById:', error);
-    return null;
-  }
+  }) => void
+): () => void {
+  // Clean the project ID
+  const cleanedProjectId = cleanProjectId(projectId);
+  
+  // Subscribe to new message attachments
+  const subscription = supabase
+    .channel(`message_attachments:${cleanedProjectId}:${contractorId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'message_attachments',
+        filter: `project_id=eq.${cleanedProjectId}`
+      },
+      (payload) => {
+        const attachment = payload.new as any;
+        
+        // Transform the attachment to match the format expected by the EnhancedMessaging component
+        callback({
+          id: attachment.id,
+          fileName: attachment.file_name,
+          fileType: attachment.file_type,
+          fileUrl: attachment.file_url,
+          fileSize: attachment.file_size
+        });
+      }
+    )
+    .subscribe();
+  
+  // Return a function to unsubscribe
+  return () => {
+    supabase.removeChannel(subscription);
+  };
 }
