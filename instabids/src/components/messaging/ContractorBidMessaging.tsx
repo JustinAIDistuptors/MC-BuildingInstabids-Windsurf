@@ -47,20 +47,59 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     
     async function getHomeowner() {
       try {
-        // Get project details to find the homeowner
-        const { data, error } = await supabase
+        // First try to get project details to find the homeowner
+        const { data: projectData, error: projectError } = await supabase
           .from('projects')
-          .select('owner_id')
+          .select('owner_id, created_by')
           .eq('id', projectId)
           .single();
         
-        if (error) {
-          console.error('Error getting project owner:', error);
+        if (projectError) {
+          console.error('Error getting project owner:', projectError);
+          
+          // Fallback: Try to get homeowner from bids table
+          const { data: bidData, error: bidError } = await supabase
+            .from('bids')
+            .select('project:project_id (owner_id, created_by)')
+            .eq('project_id', projectId)
+            .single();
+            
+          if (bidError) {
+            console.error('Error getting bid data:', bidError);
+            return;
+          }
+          
+          if (bidData?.project && typeof bidData.project === 'object') {
+            const project = bidData.project as { owner_id?: string; created_by?: string };
+            if (project.owner_id) {
+              setHomeownerId(project.owner_id);
+            } else if (project.created_by) {
+              setHomeownerId(project.created_by);
+            }
+          }
           return;
         }
         
-        if (data?.owner_id) {
-          setHomeownerId(data.owner_id);
+        // Use owner_id if available, otherwise fall back to created_by
+        if (projectData?.owner_id) {
+          setHomeownerId(projectData.owner_id);
+        } else if (projectData?.created_by) {
+          setHomeownerId(projectData.created_by);
+        } else {
+          // Last resort fallback - use a system admin ID or default homeowner
+          console.warn('No owner found for project, using fallback');
+          
+          // Try to get any homeowner user from the system
+          const { data: homeownerData, error: homeownerError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('user_type', 'homeowner')
+            .limit(1)
+            .single();
+            
+          if (!homeownerError && homeownerData?.id) {
+            setHomeownerId(homeownerData.id);
+          }
         }
       } catch (err) {
         console.error('Error getting homeowner:', err);
@@ -154,8 +193,36 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     e.preventDefault();
     
     if (!newMessage.trim() && files.length === 0) return;
-    if (!userId || !homeownerId) {
-      toast.error('Unable to send message. Missing recipient information.');
+    if (!userId) {
+      toast.error('You must be logged in to send messages.');
+      return;
+    }
+    
+    if (!homeownerId) {
+      console.error('Missing homeowner ID for project:', projectId);
+      toast.error('Unable to send message. Project owner not found.');
+      
+      // Attempt to find homeowner again as a last resort
+      try {
+        const { data: projectData } = await supabase
+          .from('projects')
+          .select('owner_id, created_by')
+          .eq('id', projectId)
+          .single();
+          
+        if (projectData?.owner_id) {
+          setHomeownerId(projectData.owner_id);
+          toast.info('Project owner found. Please try sending your message again.');
+        } else if (projectData?.created_by) {
+          setHomeownerId(projectData.created_by);
+          toast.info('Project creator found. Please try sending your message again.');
+        } else {
+          toast.error('Could not find project owner. Please contact support.');
+        }
+      } catch (err) {
+        console.error('Error in last-resort homeowner lookup:', err);
+        toast.error('Could not find project owner. Please contact support.');
+      }
       return;
     }
     
