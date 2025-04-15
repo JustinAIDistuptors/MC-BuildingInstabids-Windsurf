@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ContractorService } from "@/services/ContractorService";
+import SimpleBidCardMessaging from "@/components/messaging/SimpleBidCardMessaging";
 import React from "react";
 
 interface ProjectDetailPageProps {
@@ -309,7 +310,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                       {project.media.map((item: any, index: number) => (
                         <div key={index} className="relative aspect-square rounded-md overflow-hidden border">
                           <Image
-                            src={item.url || '/placeholder-image.jpg'}
+                            src={item.media_url || item.url || '/placeholder-image.jpg'}
                             alt={`Project image ${index + 1}`}
                             fill
                             className="object-cover"
@@ -428,6 +429,17 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                   )}
                 </div>
               </form>
+              
+              {/* Add messaging functionality */}
+              {existingBid && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-medium mb-3">Message Project Owner</h3>
+                  <SimpleBidCardMessaging 
+                    projectId={projectId} 
+                    projectTitle={project.title} 
+                  />
+                </div>
+              )}
             </CardContent>
             <CardFooter className="flex flex-col items-start">
               <p className="text-sm text-gray-500">
