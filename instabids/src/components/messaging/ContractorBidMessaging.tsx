@@ -27,6 +27,7 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
   const [sending, setSending] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [homeownerId, setHomeownerId] = useState<string | null>(null);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -35,7 +36,7 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
   // Supabase client
   const supabase = createClientComponentClient<Database>();
   
-  // Get current user
+  // Get current user and project homeowner
   useEffect(() => {
     async function getUser() {
       const { data } = await supabase.auth.getUser();
@@ -44,8 +45,31 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
       }
     }
     
+    async function getHomeowner() {
+      try {
+        // Get project details to find the homeowner
+        const { data, error } = await supabase
+          .from('projects')
+          .select('owner_id')
+          .eq('id', projectId)
+          .single();
+        
+        if (error) {
+          console.error('Error getting project owner:', error);
+          return;
+        }
+        
+        if (data?.owner_id) {
+          setHomeownerId(data.owner_id);
+        }
+      } catch (err) {
+        console.error('Error getting homeowner:', err);
+      }
+    }
+    
     getUser();
-  }, [supabase]);
+    getHomeowner();
+  }, [supabase, projectId]);
   
   // Load messages on mount
   useEffect(() => {
@@ -130,17 +154,20 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     e.preventDefault();
     
     if (!newMessage.trim() && files.length === 0) return;
-    if (!userId) return;
+    if (!userId || !homeownerId) {
+      toast.error('Unable to send message. Missing recipient information.');
+      return;
+    }
     
     try {
       setSending(true);
       
-      // Send message to project owner (homeowner)
+      // Send message directly to the project owner (homeowner)
       const success = await ContractorMessagingService.sendMessage(
         projectId,
         newMessage,
         "individual", // Message type: individual (not group)
-        null, // No specific recipient ID needed, system will determine homeowner
+        homeownerId, // Send directly to the homeowner
         files // Optional files to attach
       );
       
@@ -158,6 +185,11 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
         }));
         
         setMessages(messagesWithClientId);
+        
+        // Scroll to the bottom to show the new message
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       } else {
         toast.error('Failed to send message. Please try again.');
       }
