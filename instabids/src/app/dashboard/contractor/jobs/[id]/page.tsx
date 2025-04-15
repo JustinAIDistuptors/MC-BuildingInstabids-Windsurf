@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { ContractorService } from "@/services/ContractorService";
-import SimpleBidCardMessaging from "@/components/messaging/SimpleBidCardMessaging";
+import ContractorBidMessaging from "@/components/messaging/ContractorBidMessaging";
 import React from "react";
 
 interface ProjectDetailPageProps {
@@ -434,7 +434,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               {existingBid && (
                 <div className="mt-6">
                   <h3 className="text-lg font-medium mb-3">Message Project Owner</h3>
-                  <SimpleBidCardMessaging 
+                  <ContractorBidMessaging 
                     projectId={projectId} 
                     projectTitle={project.title} 
                   />
