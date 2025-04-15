@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase/client';
 
 // Import ALL step components
 import ProjectClassification from './steps/ProjectClassification';
@@ -65,7 +65,7 @@ const SuccessScreen = ({ bidData, onViewBidCard, onBackToDashboard }: {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 className="text-2xl font-bold text-gray-800">Your project has been submitted!</h2>
+      <h2 className="text-2xl font-bold">Your project has been submitted!</h2>
       <p className="text-gray-600 mt-2">We're finding the perfect contractors for your project.</p>
     </div>
     
@@ -159,10 +159,6 @@ const BidCardView = ({ bidData, mediaFiles, onBack, onBackToDashboard }: {
             <div>
               <p className="text-sm text-gray-500">Project Size</p>
               <p className="font-medium">{bidData.job_size || 'Not specified'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Title</p>
-              <p className="font-medium">{bidData.title || 'Not specified'}</p>
             </div>
             <div>
               <p className="text-sm text-gray-500">Group Bidding</p>
@@ -273,12 +269,6 @@ export default function BidCardForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
   
-  // Initialize Supabase client
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-  );
-  
   // Define form steps
   const FORM_STEPS = [
     { id: 'project-type', title: 'Project Type' },
@@ -306,139 +296,171 @@ export default function BidCardForm() {
     setIsSubmitting(true);
     
     try {
+      // Get the current user session directly instead of using getCurrentUser
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Error getting user session:', sessionError);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (!sessionData.session?.user?.id) {
+        console.error('No user ID found - user must be logged in to create a project');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      const userId = sessionData.session.user.id;
+      console.log('Creating project for authenticated user:', userId);
+      
       // 1. Create project in Supabase
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .insert([
-          {
-            title: data.title || 'Untitled Project',
-            description: data.description || 'No description provided',
-            status: 'published',
-            bid_status: 'accepting_bids',
-            job_size: data.job_size || 'medium', // Store the actual job size (small, medium, large)
-            city: data.location?.city || '',
-            state: data.location?.state || '',
-            zip_code: data.location?.zip_code || data.zip_code || '',
-            
-            // Store job type information in dedicated columns
-            type: data.job_type_id || 'one_time',
-            job_type_id: data.job_type_id || 'one_time',
-            job_category_id: data.job_category_id || 'home_services',
-            service_type: data.job_category_id || 'home_services',
-            
-            // Store location as a JSON string in the location column
-            location: JSON.stringify({
-              address_line1: data.location?.address_line1 || '',
-              address_line2: data.location?.address_line2 || '',
+      console.log('About to create project with data:', {
+        title: data.title || 'Untitled Project',
+        owner_id: userId,
+        // Log other fields for debugging
+      });
+      
+      try {
+        const { data: projectData, error: projectError } = await supabase
+          .from('projects')
+          .insert([
+            {
+              title: data.title || 'Untitled Project',
+              description: data.description || 'No description provided',
+              status: 'published',
+              bid_status: 'accepting_bids',
+              job_size: data.job_size || 'medium', // Store the actual job size (small, medium, large)
               city: data.location?.city || '',
               state: data.location?.state || '',
               zip_code: data.location?.zip_code || data.zip_code || '',
-            }),
-            
-            // Property details
-            property_type: 'residential', // Default to residential
-            property_size: data.property_size || '',
-            square_footage: data.square_footage || 0,
-            
-            // Timeline information
-            timeline: data.timeline_horizon_id || 'Not specified',
-            timeline_horizon_id: data.timeline_horizon_id || '',
-            timeline_start: data.timeline_start || null,
-            timeline_end: data.timeline_end || null,
-            bid_deadline: data.bid_deadline || null,
-            
-            // Additional project details
-            special_requirements: data.special_requirements || '',
-            guidance_for_bidders: data.guidance_for_bidders || '',
-            
-            // Group bidding and consent
-            group_bidding_enabled: data.group_bidding_enabled || false,
-            terms_accepted: data.terms_accepted || false,
-            marketing_consent: data.marketing_consent || false
-          }
-        ])
-        .select();
-      
-      if (projectError) {
-        console.error('Error creating project:', projectError);
-        return;
-      }
-      
-      if (!projectData || projectData.length === 0) {
-        console.error('No project data returned after creation');
-        return;
-      }
-      
-      const projectId = projectData[0].id;
-      console.log('Project created with ID:', projectId);
-      
-      // 2. Upload media files if any
-      const uploadedUrls: string[] = [];
-      
-      if (mediaFiles.length > 0) {
-        for (let i = 0; i < mediaFiles.length; i++) {
-          const file = mediaFiles[i];
-          // TypeScript safety check
-          if (!file) {
-            console.error(`File at index ${i} is undefined, skipping`);
-            continue;
-          }
+              
+              // Store job type information in dedicated columns
+              type: data.job_type_id || 'one_time',
+              job_type_id: data.job_type_id || 'one_time',
+              job_category_id: data.job_category_id || 'home_services',
+              service_type: data.job_category_id || 'home_services',
+              
+              // Store location as a JSON string in the location column
+              location: JSON.stringify({
+                address_line1: data.location?.address_line1 || '',
+                address_line2: data.location?.address_line2 || '',
+                city: data.location?.city || '',
+                state: data.location?.state || '',
+                zip_code: data.location?.zip_code || data.zip_code || '',
+              }),
+              
+              // Property details
+              property_type: 'residential', // Default to residential
+              property_size: data.property_size || '',
+              square_footage: data.square_footage || 0,
+              
+              // Timeline information
+              timeline: data.timeline_horizon_id || 'Not specified',
+              timeline_horizon_id: data.timeline_horizon_id || '',
+              timeline_start: data.timeline_start || null,
+              timeline_end: data.timeline_end || null,
+              bid_deadline: data.bid_deadline || null,
+              
+              // Additional project details
+              special_requirements: data.special_requirements || '',
+              guidance_for_bidders: data.guidance_for_bidders || '',
+              
+              // Group bidding and consent
+              group_bidding_enabled: data.group_bidding_enabled || false,
+              terms_accepted: data.terms_accepted || false,
+              marketing_consent: data.marketing_consent || false,
+              
+              // Add owner_id from the session user
+              owner_id: userId
+            }
+          ])
+          .select();
+        
+        if (projectError) {
+          console.error('Error creating project:', projectError);
+          console.error('Error details:', JSON.stringify(projectError, null, 2));
+          setIsSubmitting(false);
+          return;
+        }
+        
+        if (!projectData || projectData.length === 0) {
+          console.error('No project data returned after creation');
+          setIsSubmitting(false);
+          return;
+        }
+        
+        console.log('Project created successfully:', projectData[0]);
+        
+        // Store project ID for use in the rest of the function
+        const projectId = projectData[0].id;
+        
+        // 2. Upload media files if any
+        const uploadedUrls: string[] = [];
+        
+        if (mediaFiles.length > 0) {
+          console.log(`Uploading ${mediaFiles.length} media files...`);
           
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${projectId}/${Date.now()}_${i}.${fileExt}`;
-          
-          console.log(`Uploading file ${i + 1}/${mediaFiles.length} to projectmedia/${fileName}`);
-          
-          const { data: uploadData, error: uploadError } = await supabase
-            .storage
-            .from('projectmedia')
-            .upload(fileName, file, {
-              cacheControl: '3600',
-              upsert: true
-            });
-          
-          if (uploadError) {
-            console.error(`Error uploading file ${i + 1}:`, uploadError);
-            continue;
-          }
-          
-          // Get the public URL
-          const { data: publicUrlData } = supabase
-            .storage
-            .from('projectmedia')
-            .getPublicUrl(fileName);
-          
-          if (publicUrlData) {
-            uploadedUrls.push(publicUrlData.publicUrl);
-            console.log(`File ${i + 1} uploaded successfully:`, publicUrlData.publicUrl);
+          for (let i = 0; i < mediaFiles.length; i++) {
+            const file = mediaFiles[i];
+            if (!file) {
+              continue;
+            }
             
-            // 3. Save media reference to project_media table
-            const { error: mediaRefError } = await supabase
-              .from('project_media')
-              .insert([{
-                project_id: projectId,
-                media_url: publicUrlData.publicUrl,
-                media_type: file.type,
-                file_name: file.name
-              }]);
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${projectId}/${Date.now()}_${i}.${fileExt}`;
             
-            if (mediaRefError) {
-              console.error(`Error saving media reference ${i + 1}:`, mediaRefError);
-            } else {
-              console.log(`Media reference ${i + 1} saved successfully`);
+            console.log(`Uploading file ${i + 1}/${mediaFiles.length} to projectmedia/${fileName}`);
+            
+            // Upload file to Supabase Storage
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('projectmedia')
+              .upload(fileName, file, {
+                cacheControl: '3600',
+                upsert: false
+              });
+              
+            if (uploadError) {
+              console.error(`Error uploading file ${i + 1}:`, uploadError);
+              continue;
+            }
+            
+            console.log(`File ${i + 1} uploaded successfully:`, uploadData?.path);
+            
+            // Get public URL for the uploaded file
+            const { data: publicUrlData } = supabase.storage
+              .from('projectmedia')
+              .getPublicUrl(uploadData?.path || '');
+              
+            if (publicUrlData?.publicUrl) {
+              uploadedUrls.push(publicUrlData.publicUrl);
+              
+              // Create reference in project_media table
+              const { error: mediaRefError } = await supabase
+                .from('project_media')
+                .insert([{
+                  project_id: projectId,
+                  media_url: publicUrlData.publicUrl,
+                  media_type: file.type,
+                  file_name: file.name
+                }]);
+                
+              if (mediaRefError) {
+                console.error('Error creating media reference:', mediaRefError);
+              }
             }
           }
         }
+        
+        // Show success screen
+        setIsSubmitted(true);
+        
+        console.log('Project saved to Supabase with ID:', projectId);
+      } catch (insertError) {
+        console.error('Exception during project creation:', insertError);
+        setIsSubmitting(false);
+        return;
       }
-      
-      // Save the submitted data
-      setSubmittedData(data);
-      
-      // Show success screen
-      setIsSubmitted(true);
-      
-      console.log('Project saved to Supabase with ID:', projectId);
-      
     } catch (error) {
       console.error('Failed to save project:', error);
     } finally {
