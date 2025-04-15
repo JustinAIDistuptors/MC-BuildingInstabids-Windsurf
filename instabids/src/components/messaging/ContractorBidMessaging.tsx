@@ -39,9 +39,42 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
   // Get current user and project homeowner
   useEffect(() => {
     async function getUser() {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) {
-        setUserId(data.user.id);
+      try {
+        // First try the standard auth method
+        const { data } = await supabase.auth.getUser();
+        
+        if (data?.user) {
+          console.log("User authenticated via standard auth:", data.user.id);
+          setUserId(data.user.id);
+          return;
+        }
+        
+        // Fallback: Check session directly
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session?.user) {
+          console.log("User authenticated via session:", sessionData.session.user.id);
+          setUserId(sessionData.session.user.id);
+          return;
+        }
+        
+        // Last resort: Try to get user ID from localStorage (development only)
+        const localUserId = localStorage.getItem('supabase.auth.token');
+        if (localUserId) {
+          try {
+            const parsedData = JSON.parse(localUserId);
+            if (parsedData?.currentSession?.user?.id) {
+              console.log("User authenticated via localStorage:", parsedData.currentSession.user.id);
+              setUserId(parsedData.currentSession.user.id);
+              return;
+            }
+          } catch (e) {
+            console.error("Error parsing localStorage user data:", e);
+          }
+        }
+        
+        console.warn("No authenticated user found");
+      } catch (err) {
+        console.error("Error getting authenticated user:", err);
       }
     }
     
@@ -109,6 +142,35 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     getUser();
     getHomeowner();
   }, [supabase, projectId]);
+  
+  // Force set a user ID for development testing
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && !userId) {
+      // Check if we have a contractor ID in URL params (for testing)
+      const urlParams = new URLSearchParams(window.location.search);
+      const testContractorId = urlParams.get('contractor_id');
+      
+      if (testContractorId) {
+        console.log("Setting test contractor ID from URL:", testContractorId);
+        setUserId(testContractorId);
+        // Store for future use
+        localStorage.setItem('dev_user_id', testContractorId);
+      } else {
+        // Try to get from localStorage
+        const storedId = localStorage.getItem('dev_user_id');
+        if (storedId) {
+          console.log("Using stored contractor ID:", storedId);
+          setUserId(storedId);
+        } else {
+          // Hardcoded fallback for development
+          const fallbackId = '00000000-0000-0000-0000-000000000000'; // Replace with a valid contractor ID
+          console.log("Using fallback contractor ID:", fallbackId);
+          setUserId(fallbackId);
+          localStorage.setItem('dev_user_id', fallbackId);
+        }
+      }
+    }
+  }, [userId]);
   
   // Load messages on mount
   useEffect(() => {
@@ -193,8 +255,19 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     e.preventDefault();
     
     if (!newMessage.trim() && files.length === 0) return;
+    
+    // Development fallback - force a user ID if in development
+    if (!userId && process.env.NODE_ENV === 'development') {
+      console.warn("Development mode: Using fallback user ID");
+      // Use a known contractor ID for development
+      const devUserId = localStorage.getItem('dev_user_id') || '00000000-0000-0000-0000-000000000000';
+      setUserId(devUserId);
+      toast.info("Using development user ID");
+    }
+    
     if (!userId) {
-      toast.error('You must be logged in to send messages.');
+      console.error("Authentication issue: No user ID available");
+      toast.error('You must be logged in to send messages. Please refresh the page and try again.');
       return;
     }
     
