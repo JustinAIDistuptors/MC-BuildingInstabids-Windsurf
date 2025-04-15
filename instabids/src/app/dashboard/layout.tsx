@@ -172,7 +172,7 @@ export default function DashboardLayout({
               InstaBids
             </Link>
             <div className="px-2 py-1 rounded-full bg-gradient-to-r from-blue-100 to-indigo-100 text-xs font-medium text-blue-700 capitalize animate-fade-in">
-              {userType}
+              {userType === 'contractor' ? 'Contractor' : 'Homeowner'}
             </div>
           </div>
           
