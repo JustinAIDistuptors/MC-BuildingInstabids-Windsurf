@@ -14,15 +14,13 @@ export interface ContractorBidMessagingProps {
 }
 
 /**
- * A specialized messaging component for contractors to communicate with project owners
- * Simplified interface that removes contractor selection and group messaging options
- * Following the Magic MCP Integration pattern
+ * A simplified messaging component for contractors to communicate with project owners
  */
 export default function ContractorBidMessaging({ projectId, projectTitle }: ContractorBidMessagingProps) {
   // State
   const [messages, setMessages] = useState<FormattedMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
@@ -36,153 +34,111 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
   // Supabase client
   const supabase = createClientComponentClient<Database>();
   
-  // Get current user and project homeowner
+  // Load user data and messages on component mount
   useEffect(() => {
-    async function getUser() {
-      try {
-        // First try the standard auth method
-        const { data } = await supabase.auth.getUser();
-        
-        if (data?.user) {
-          console.log("User authenticated via standard auth:", data.user.id);
-          setUserId(data.user.id);
-          return;
-        }
-        
-        // Fallback: Check session directly
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData?.session?.user) {
-          console.log("User authenticated via session:", sessionData.session.user.id);
-          setUserId(sessionData.session.user.id);
-          return;
-        }
-        
-        // Last resort: Try to get user ID from localStorage (development only)
-        const localUserId = localStorage.getItem('supabase.auth.token');
-        if (localUserId) {
-          try {
-            const parsedData = JSON.parse(localUserId);
-            if (parsedData?.currentSession?.user?.id) {
-              console.log("User authenticated via localStorage:", parsedData.currentSession.user.id);
-              setUserId(parsedData.currentSession.user.id);
-              return;
-            }
-          } catch (e) {
-            console.error("Error parsing localStorage user data:", e);
-          }
-        }
-        
-        console.warn("No authenticated user found");
-      } catch (err) {
-        console.error("Error getting authenticated user:", err);
+    const initialize = async () => {
+      const user = await getUserData();
+      if (user) {
+        await getHomeownerData();
+        await loadMessages();
       }
-    }
+    };
     
-    async function getHomeowner() {
-      try {
-        // First try to get project details to find the homeowner
-        const { data: projectData, error: projectError } = await supabase
-          .from('projects')
-          .select('owner_id, created_by')
-          .eq('id', projectId)
-          .single();
-        
-        if (projectError) {
-          console.error('Error getting project owner:', projectError);
-          
-          // Fallback: Try to get homeowner from bids table
-          const { data: bidData, error: bidError } = await supabase
-            .from('bids')
-            .select('project:project_id (owner_id, created_by)')
-            .eq('project_id', projectId)
-            .single();
-            
-          if (bidError) {
-            console.error('Error getting bid data:', bidError);
-            return;
-          }
-          
-          if (bidData?.project && typeof bidData.project === 'object') {
-            const project = bidData.project as { owner_id?: string; created_by?: string };
-            if (project.owner_id) {
-              setHomeownerId(project.owner_id);
-            } else if (project.created_by) {
-              setHomeownerId(project.created_by);
-            }
-          }
-          return;
-        }
-        
-        // Use owner_id if available, otherwise fall back to created_by
-        if (projectData?.owner_id) {
-          setHomeownerId(projectData.owner_id);
-        } else if (projectData?.created_by) {
-          setHomeownerId(projectData.created_by);
-        } else {
-          // Last resort fallback - use a system admin ID or default homeowner
-          console.warn('No owner found for project, using fallback');
-          
-          // Try to get any homeowner user from the system
-          const { data: homeownerData, error: homeownerError } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('user_type', 'homeowner')
-            .limit(1)
-            .single();
-            
-          if (!homeownerError && homeownerData?.id) {
-            setHomeownerId(homeownerData.id);
-          }
-        }
-      } catch (err) {
-        console.error('Error getting homeowner:', err);
-      }
-    }
-    
-    getUser();
-    getHomeowner();
-  }, [supabase, projectId]);
+    initialize();
+  }, [projectId]);
   
-  // Force set a user ID for development testing
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && !userId) {
-      // Check if we have a contractor ID in URL params (for testing)
-      const urlParams = new URLSearchParams(window.location.search);
-      const testContractorId = urlParams.get('contractor_id');
+  // Get current user data
+  const getUserData = async () => {
+    try {
+      setLoading(true);
       
-      if (testContractorId) {
-        console.log("Setting test contractor ID from URL:", testContractorId);
-        setUserId(testContractorId);
-        // Store for future use
-        localStorage.setItem('dev_user_id', testContractorId);
+      // Try to get the authenticated user
+      const { data, error } = await supabase.auth.getUser();
+      
+      if (error) {
+        console.error("Authentication error:", error.message);
+        setError("Authentication error: " + error.message);
+        return null;
+      }
+      
+      if (data?.user) {
+        console.log("User authenticated:", data.user.id);
+        setUserId(data.user.id);
+        return data.user.id;
       } else {
-        // Try to get from localStorage
-        const storedId = localStorage.getItem('dev_user_id');
-        if (storedId) {
-          console.log("Using stored contractor ID:", storedId);
-          setUserId(storedId);
+        console.warn("No authenticated user found");
+        
+        // For development only - use a test user ID if needed
+        if (process.env.NODE_ENV === 'development') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const testContractorId = urlParams.get('contractor_id') || 
+                                  localStorage.getItem('dev_user_id') || 
+                                  '00000000-0000-0000-0000-000000000000';
+          
+          console.log("Using test contractor ID:", testContractorId);
+          setUserId(testContractorId);
+          return testContractorId;
         } else {
-          // Hardcoded fallback for development
-          const fallbackId = '00000000-0000-0000-0000-000000000000'; // Replace with a valid contractor ID
-          console.log("Using fallback contractor ID:", fallbackId);
-          setUserId(fallbackId);
-          localStorage.setItem('dev_user_id', fallbackId);
+          setError("You must be logged in to view messages");
+          return null;
         }
       }
+    } catch (err) {
+      console.error("Error getting authenticated user:", err);
+      setError("Error authenticating user");
+      return null;
+    } finally {
+      setLoading(false);
     }
-  }, [userId]);
+  };
   
-  // Load messages on mount
-  useEffect(() => {
-    async function loadMessages() {
-      if (!userId) return;
+  // Get homeowner data for the project
+  const getHomeownerData = async () => {
+    if (!projectId) return;
+    
+    try {
+      // First try to get project details to find the homeowner
+      const { data, error } = await supabase
+        .from('projects')
+        .select('owner_id, created_by')
+        .eq('id', projectId)
+        .single();
       
-      try {
-        setLoading(true);
-        
-        // Get messages between contractor and homeowner only
-        const messagesData = await ContractorMessagingService.getMessages(projectId, userId);
-        
+      if (error) {
+        console.error('Error getting project owner:', error);
+        return;
+      }
+      
+      if (data?.owner_id) {
+        setHomeownerId(data.owner_id);
+      } else if (data?.created_by) {
+        setHomeownerId(data.created_by);
+      } else {
+        console.warn('No owner found for project');
+      }
+    } catch (err) {
+      console.error('Error getting homeowner:', err);
+    }
+  };
+  
+  // Load messages function
+  const loadMessages = async () => {
+    if (!projectId) {
+      setError("Project ID is missing");
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      console.log('Loading messages for project:', projectId);
+      
+      // Get all messages for this project
+      const messagesData = await ContractorMessagingService.getMessages(projectId);
+      console.log('Loaded messages:', messagesData);
+      
+      if (messagesData && messagesData.length > 0) {
         // Add clientId for React keys
         const messagesWithClientId = messagesData.map(msg => ({
           ...msg,
@@ -190,53 +146,22 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
         }));
         
         setMessages(messagesWithClientId);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading messages:', err);
-        setError('Failed to load messages. Please try again.');
-      } finally {
-        setLoading(false);
+        
+        // Scroll to bottom after loading messages
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        setMessages([]);
+        console.log('No messages found for project');
       }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      setError('Failed to load messages. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    
-    if (projectId && userId) {
-      loadMessages();
-    }
-  }, [projectId, userId]);
-  
-  // Subscribe to new messages
-  useEffect(() => {
-    if (!projectId || !userId) return;
-    
-    const unsubscribe = ContractorMessagingService.subscribeToMessages(
-      projectId,
-      userId,
-      (newMessage) => {
-        setMessages(prev => {
-          // Check if message already exists to prevent duplicates
-          const exists = prev.some(msg => msg.id === newMessage.id);
-          if (exists) return prev;
-          
-          // Add clientId for React keys
-          const messageWithClientId = {
-            ...newMessage,
-            clientId: `${newMessage.id}-${Date.now()}`
-          };
-          
-          return [...prev, messageWithClientId];
-        });
-      }
-    );
-    
-    return () => {
-      unsubscribe();
-    };
-  }, [projectId, userId]);
-  
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  };
   
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,91 +170,40 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     }
   };
   
-  // Handle file button click
-  const handleFileButtonClick = () => {
-    fileInputRef.current?.click();
-  };
-  
-  // Send message
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!newMessage.trim() && files.length === 0) return;
-    
-    // Development fallback - force a user ID if in development
-    if (!userId && process.env.NODE_ENV === 'development') {
-      console.warn("Development mode: Using fallback user ID");
-      // Use a known contractor ID for development
-      const devUserId = localStorage.getItem('dev_user_id') || '00000000-0000-0000-0000-000000000000';
-      setUserId(devUserId);
-      toast.info("Using development user ID");
+  // Handle sending a message
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() && files.length === 0) {
+      toast.error('Please enter a message or attach a file.');
+      return;
     }
     
     if (!userId) {
-      console.error("Authentication issue: No user ID available");
-      toast.error('You must be logged in to send messages. Please refresh the page and try again.');
+      toast.error('You must be logged in to send messages.');
       return;
     }
     
     if (!homeownerId) {
-      console.error('Missing homeowner ID for project:', projectId);
-      toast.error('Unable to send message. Project owner not found.');
-      
-      // Attempt to find homeowner again as a last resort
-      try {
-        const { data: projectData } = await supabase
-          .from('projects')
-          .select('owner_id, created_by')
-          .eq('id', projectId)
-          .single();
-          
-        if (projectData?.owner_id) {
-          setHomeownerId(projectData.owner_id);
-          toast.info('Project owner found. Please try sending your message again.');
-        } else if (projectData?.created_by) {
-          setHomeownerId(projectData.created_by);
-          toast.info('Project creator found. Please try sending your message again.');
-        } else {
-          toast.error('Could not find project owner. Please contact support.');
-        }
-      } catch (err) {
-        console.error('Error in last-resort homeowner lookup:', err);
-        toast.error('Could not find project owner. Please contact support.');
-      }
+      toast.error('Cannot determine message recipient.');
       return;
     }
     
     try {
       setSending(true);
       
-      // Send message directly to the project owner (homeowner)
-      const success = await ContractorMessagingService.sendMessage(
+      const { success } = await ContractorMessagingService.sendMessage({
         projectId,
-        newMessage,
-        "individual", // Message type: individual (not group)
-        homeownerId, // Send directly to the homeowner
-        files // Optional files to attach
-      );
+        message: newMessage,
+        recipientId: homeownerId,
+        files
+      });
       
       if (success) {
         setNewMessage('');
         setFiles([]);
+        toast.success('Message sent successfully!');
         
-        // Refresh messages to ensure we have the latest
-        const refreshedMessages = await ContractorMessagingService.getMessages(projectId, userId);
-        
-        // Add clientId for React keys
-        const messagesWithClientId = refreshedMessages.map(msg => ({
-          ...msg,
-          clientId: `${msg.id}-${Date.now()}`
-        }));
-        
-        setMessages(messagesWithClientId);
-        
-        // Scroll to the bottom to show the new message
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
+        // Reload messages to show the new message
+        await loadMessages();
       } else {
         toast.error('Failed to send message. Please try again.');
       }
@@ -345,6 +219,24 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
     <div className="flex flex-col h-full border rounded-md overflow-hidden">
       {/* Messages area */}
       <div className="flex-1 p-4 overflow-y-auto max-h-[300px] min-h-[200px] bg-gray-50">
+        <div className="flex justify-end mb-2">
+          <Button 
+            variant="outline" 
+            onClick={loadMessages} 
+            disabled={loading}
+            className="text-xs px-2 py-1 h-auto"
+          >
+            {loading ? (
+              <span className="flex items-center">
+                <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary mr-2"></span>
+                Loading...
+              </span>
+            ) : (
+              <span>Refresh Messages</span>
+            )}
+          </Button>
+        </div>
+        
         {loading ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-gray-500">Loading messages...</p>
@@ -362,40 +254,37 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
             {messages.map((message) => (
               <div
                 key={message.clientId || message.id}
-                className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${
+                  message.isOwn ? 'justify-end' : 'justify-start'
+                }`}
               >
                 <div
                   className={`max-w-[80%] rounded-lg p-3 ${
                     message.isOwn
                       ? 'bg-blue-500 text-white'
-                      : 'bg-white border border-gray-200'
+                      : 'bg-gray-200 text-gray-800'
                   }`}
                 >
-                  <div className="text-xs mb-1">
-                    {message.isOwn ? 'You' : 'Project Owner'}
-                  </div>
-                  <div className="break-words">{message.content}</div>
+                  <p className="text-sm">{message.content}</p>
+                  <p className="text-xs mt-1 opacity-70">
+                    {new Date(message.timestamp).toLocaleString()}
+                  </p>
+                  
                   {message.attachments && message.attachments.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {message.attachments.map((attachment) => (
+                    <div className="mt-2">
+                      {message.attachments.map((attachment, index) => (
                         <a
-                          key={attachment.id}
+                          key={index}
                           href={attachment.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block text-xs underline"
+                          className="block text-xs underline mt-1"
                         >
-                          {attachment.fileName}
+                          {attachment.fileName || `Attachment ${index + 1}`}
                         </a>
                       ))}
                     </div>
                   )}
-                  <div className="text-xs mt-1 opacity-70">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </div>
                 </div>
               </div>
             ))}
@@ -404,61 +293,61 @@ export default function ContractorBidMessaging({ projectId, projectTitle }: Cont
         )}
       </div>
       
-      {/* Message input */}
-      <form onSubmit={handleSendMessage} className="border-t p-3 bg-white">
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <Textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message to Project Owner"
-              className="min-h-[80px] resize-none"
-              disabled={sending}
-            />
-            {files.length > 0 && (
-              <div className="mt-2">
-                <p className="text-xs text-gray-500">
-                  {files.length} file(s) selected
-                </p>
-                <ul className="mt-1 text-xs">
-                  {Array.from(files).map((file, index) => (
-                    <li key={index} className="truncate">
-                      {file.name}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
+      {/* Message input area */}
+      <div className="p-4 border-t bg-white">
+        <div className="flex flex-col space-y-2">
+          <Textarea
+            placeholder="Type your message here..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="resize-none"
+            rows={3}
+            disabled={sending}
+          />
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                multiple
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+              >
+                Attach Files
+              </Button>
+              
+              {files.length > 0 && (
+                <span className="text-xs text-gray-500">
+                  {files.length} file{files.length !== 1 ? 's' : ''} selected
+                </span>
+              )}
+            </div>
+            
             <Button
               type="button"
-              variant="outline"
-              onClick={handleFileButtonClick}
-              disabled={sending}
-              className="h-10 w-10 p-0"
+              onClick={handleSendMessage}
+              disabled={sending || (!newMessage.trim() && files.length === 0)}
             >
-              <span className="sr-only">Attach files</span>
-              📎
-            </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-              multiple
-            />
-            <Button
-              type="submit"
-              disabled={(!newMessage.trim() && files.length === 0) || sending}
-              className="h-10 w-10 p-0"
-            >
-              <span className="sr-only">Send message</span>
-              📤
+              {sending ? (
+                <span className="flex items-center">
+                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></span>
+                  Sending...
+                </span>
+              ) : (
+                'Send Message'
+              )}
             </Button>
           </div>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 'use client';
 
-import { supabase, ensureAuthentication } from '@/lib/supabase/client';
+import { getSupabaseClient } from '@/lib/supabase/client';
+import { Database } from '@/types/supabase';
 import { toast } from '@/components/ui/use-toast';
+import { v4 as uuidv4 } from 'uuid';
 
 // Types
 export interface ContractorAlias {
@@ -34,7 +36,6 @@ export interface Message {
   id: string;
   project_id: string;
   sender_id: string;
-  recipient_id: string | null;
   content: string;
   message_type: 'individual' | 'group';
   contractor_alias: string | null;
@@ -45,30 +46,72 @@ export interface Message {
 
 export interface ContractorWithAlias {
   id: string;
-  full_name: string;
-  company_name?: string;
-  alias: string;
-  bid_amount?: number;
-  bid_status?: string;
-  avatar_url?: string;
+  name: string;
+  alias: string | null;
+  avatar?: string | null;
+  bidAmount: number | null;
 }
 
 export interface FormattedMessage {
   id: string;
   senderId: string;
-  senderAlias?: string | undefined;
+  senderAlias?: string | null;
   content: string;
   timestamp: string;
   isOwn: boolean;
   isGroup: boolean;
-  clientId?: string | undefined;
+  clientId?: string;
   attachments?: Array<{
     id: string;
     fileName: string;
     fileUrl: string;
     fileType: string;
     fileSize: number;
-  }> | undefined;
+  }>;
+}
+
+/**
+ * Get the current user ID from Supabase auth
+ * @returns The user ID if authenticated, null if not authenticated
+ */
+export async function getUserId(): Promise<string | null> {
+  try {
+    const supabase = getSupabaseClient();
+    
+    // First try to get user from getUser method
+    const { data: userData } = await supabase.auth.getUser();
+    
+    if (userData?.user?.id) {
+      return userData.user.id;
+    }
+    
+    // If that fails, try to get from session
+    const { data: sessionData } = await supabase.auth.getSession();
+    
+    if (sessionData?.session?.user?.id) {
+      return sessionData.session.user.id;
+    }
+    
+    // For development environments only, try anonymous sign-in as fallback
+    if (process.env.NODE_ENV === 'development') {
+      try {
+        const { data: anonData, error: anonError } = await supabase.auth.signInAnonymously();
+        if (!anonError && anonData?.user?.id) {
+          console.log('Development fallback: Signed in anonymously');
+          return anonData.user.id;
+        }
+      } catch (anonError) {
+        console.error('Anonymous sign-in failed:', anonError);
+      }
+    }
+    
+    // No authenticated user found
+    console.log('No authenticated user found');
+    return null;
+  } catch (error) {
+    console.error('Error getting user ID:', error);
+    return null;
+  }
 }
 
 /**
@@ -78,8 +121,7 @@ export interface FormattedMessage {
  */
 export async function assignContractorAliases(projectId: string): Promise<boolean> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
     // Check if we already have aliases assigned for this project
     const { data: existingAliases } = await supabase
@@ -95,17 +137,9 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
     // Get all bids for this project with contractor information
     const { data: bids, error: bidsError } = await supabase
       .from('bids')
-      .select(`
-        id,
-        project_id,
-        contractor_id,
-        contractors (
-          id,
-          full_name,
-          company_name
-        )
-      `)
-      .eq('project_id', projectId);
+      .select('contractor_id')
+      .eq('project_id', projectId)
+      .eq('status', 'submitted');
     
     if (bidsError) {
       console.error('Error getting bids:', bidsError);
@@ -117,18 +151,23 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
       return false;
     }
     
-    // Assign aliases (A, B, C, etc.) to contractors
-    const aliases = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-    const contractorAliases = bids.map((bid, index) => ({
-      project_id: projectId,
-      contractor_id: bid.contractor_id,
-      alias: aliases[index] || `Contractor ${index + 1}`
-    }));
+    // Get unique contractor IDs
+    const contractorIds = [...new Set(bids.map((b: any) => b.contractor_id))];
+    
+    // Generate aliases (A, B, C, D, E, etc.)
+    const aliases = contractorIds.map((contractorId, index) => {
+      const alias = String.fromCharCode(65 + index); // A, B, C, D, E, ...
+      return {
+        project_id: projectId,
+        contractor_id: contractorId,
+        alias
+      };
+    });
     
     // Insert aliases into the database
     const { error: insertError } = await supabase
       .from('contractor_aliases')
-      .insert(contractorAliases);
+      .insert(aliases);
     
     if (insertError) {
       console.error('Error inserting aliases:', insertError);
@@ -149,15 +188,10 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
  * @param contractorId The contractor ID
  * @returns Promise resolving to the alias or null
  */
-export async function getContractorAlias(
-  projectId: string, 
-  contractorId: string
-): Promise<string | null> {
+export async function getContractorAlias(projectId: string, contractorId: string): Promise<string | null> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
-    // Get the alias from the database
     const { data, error } = await supabase
       .from('contractor_aliases')
       .select('alias')
@@ -182,100 +216,113 @@ export async function getContractorAlias(
  * @param projectId The project ID
  * @returns Promise resolving to an array of contractors with aliases
  */
-export async function getContractorsWithAliases(
-  projectId: string
-): Promise<ContractorWithAlias[]> {
+export async function getContractorsWithAliases(projectId: string): Promise<ContractorWithAlias[]> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
+    const result: ContractorWithAlias[] = [];
     
-    // Get all bids for this project with contractor information
-    const { data: bids, error: bidsError } = await supabase
-      .from('bids')
-      .select(`
-        id,
-        amount,
-        status,
-        project_id,
-        contractor_id,
-        contractors (
-          id,
-          full_name,
-          company_name,
-          avatar_url
-        )
-      `)
-      .eq('project_id', projectId);
-    
-    if (bidsError) {
-      console.error('Error getting bids:', bidsError);
-      return [];
-    }
-    
-    if (!bids || bids.length === 0) {
-      console.log('No bids found for this project');
-      return [];
-    }
-    
-    // Get aliases for this project
-    const { data: aliases, error: aliasesError } = await supabase
-      .from('contractor_aliases')
-      .select('*')
-      .eq('project_id', projectId);
-    
-    if (aliasesError) {
-      console.error('Error getting aliases:', aliasesError);
+    // First try to get contractors from messages
+    try {
+      // Get unique sender IDs from messages for this project
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('sender_id')
+        .eq('project_id', projectId)
+        .not('sender_id', 'is', null);
       
-      // If no aliases exist yet, try to assign them
-      const assigned = await assignContractorAliases(projectId);
-      if (!assigned) {
-        return [];
+      if (!messagesError && messages && messages.length > 0) {
+        // Get unique sender IDs
+        const senderIds = [...new Set(messages.map(m => m.sender_id))];
+        
+        // Get contractor profiles for these IDs
+        if (senderIds.length > 0) {
+          const { data: contractors, error: contractorsError } = await supabase
+            .from('profiles')
+            .select('id, name, avatar_url')
+            .in('id', senderIds);
+          
+          if (!contractorsError && contractors && contractors.length > 0) {
+            // Get aliases for these contractors
+            const { data: aliases } = await supabase
+              .from('contractor_aliases')
+              .select('contractor_id, alias')
+              .eq('project_id', projectId);
+            
+            // Add contractors from messages to the result
+            contractors.forEach(contractor => {
+              const alias = aliases?.find(a => a.contractor_id === contractor.id)?.alias || null;
+              
+              result.push({
+                id: contractor.id,
+                name: contractor.name || 'Unknown Contractor',
+                alias,
+                avatar: contractor.avatar_url,
+                bidAmount: null // No bid amount for contractors from messages
+              });
+            });
+          }
+        }
       }
-      
-      // Get the newly assigned aliases
-      const { data: newAliases, error: newAliasesError } = await supabase
-        .from('contractor_aliases')
-        .select('*')
+    } catch (err) {
+      console.error('Error getting contractors from messages:', err);
+      // Continue to try getting contractors from bids
+    }
+    
+    // Then try to get contractors from bids
+    try {
+      // Get all bids for this project with contractor information
+      const { data: bids, error: bidsError } = await supabase
+        .from('bids')
+        .select(`
+          id,
+          amount,
+          contractor_id,
+          contractors (
+            id,
+            name,
+            avatar_url
+          )
+        `)
         .eq('project_id', projectId);
       
-      if (newAliasesError) {
-        console.error('Error getting newly assigned aliases:', newAliasesError);
-        return [];
+      if (!bidsError && bids && bids.length > 0) {
+        // Get aliases for all contractors
+        const { data: aliases } = await supabase
+          .from('contractor_aliases')
+          .select('contractor_id, alias')
+          .eq('project_id', projectId);
+        
+        // Map bids to contractors with aliases
+        bids.forEach((bid: any) => {
+          const contractor = bid.contractors;
+          
+          // Skip if contractor is null or undefined
+          if (!contractor) return;
+          
+          // Skip if this contractor is already in the result
+          if (result.some(c => c.id === contractor.id)) return;
+          
+          const alias = aliases?.find((a: any) => a.contractor_id === bid.contractor_id)?.alias || null;
+          
+          result.push({
+            id: contractor.id || bid.contractor_id,
+            name: contractor.name || 'Unknown Contractor',
+            alias,
+            avatar: contractor.avatar_url,
+            bidAmount: bid.amount
+          });
+        });
       }
-      
-      // Map contractors to their aliases
-      const contractorsWithAliases: ContractorWithAlias[] = bids.map((bid, index) => {
-        const alias = newAliases[index]?.alias || String.fromCharCode(65 + index); // A, B, C, etc.
-        
-        // Find bid amount if available
-        const bidAmount = bids.find(b => b.contractor_id === bid.contractor_id)?.amount;
-        
-        return {
-          id: bid.contractor_id,
-          full_name: bid.contractors?.full_name || '',
-          company_name: bid.contractors?.company_name || undefined,
-          alias,
-          bid_amount: bidAmount || undefined,
-          avatar_url: bid.contractors?.avatar_url || undefined
-        };
-      });
-      
-      return contractorsWithAliases;
+    } catch (err) {
+      console.error('Error getting contractors from bids:', err);
     }
     
-    // Map contractors to their aliases
-    return bids.map(bid => {
-      const alias = aliases?.find(a => a.contractor_id === bid.contractor_id);
-      return {
-        id: bid.contractor_id,
-        full_name: bid.contractors?.full_name || 'Unknown Contractor',
-        company_name: bid.contractors?.company_name,
-        alias: alias?.alias || 'Unknown',
-        bid_amount: bid.amount,
-        bid_status: bid.status,
-        avatar_url: bid.contractors?.avatar_url
-      };
-    });
+    // If no contractors found, return empty array
+    if (result.length === 0) {
+      console.log('No contractors found for this project');
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error getting contractors with aliases:', error);
     return [];
@@ -283,231 +330,154 @@ export async function getContractorsWithAliases(
 }
 
 /**
- * Helper function to handle file attachments for messages
+ * Upload file attachments for a message
  * @param messageId The message ID
- * @param files Array of files to attach
- * @returns Promise resolving to true if successful, false otherwise
+ * @param files Array of files to upload
+ * @returns Promise resolving to an array of attachment objects
  */
-export async function handleFileAttachments(messageId: string, files: File[]): Promise<boolean> {
+export async function uploadAttachments(messageId: string, files: File[]): Promise<MessageAttachment[]> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
+    const attachments: MessageAttachment[] = [];
     
-    if (!files || files.length === 0) {
-      return true; // No files to attach
-    }
-    
-    console.log(`Processing ${files.length} attachments for message ${messageId}`);
-    
-    // Verify storage bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    console.log('Available buckets:', buckets?.map(b => `${b.name} (public: ${b.public})`).join(', '));
-    
-    const BUCKET_NAME = 'message-attachments';
-    const attachmentBucket = buckets?.find(b => b.name === BUCKET_NAME);
-    
-    if (!attachmentBucket) {
-      console.error(`${BUCKET_NAME} bucket not found. Creating bucket...`);
-      const { error: createBucketError } = await supabase.storage.createBucket(BUCKET_NAME, {
-        public: true,
-        fileSizeLimit: 10485760, // 10MB
-      });
-      
-      if (createBucketError) {
-        console.error(`Error creating ${BUCKET_NAME} bucket:`, createBucketError);
-        toast({
-          title: 'Storage Error',
-          description: 'Could not create storage bucket for attachments.',
-          variant: 'destructive',
-        });
-        return false;
-      }
-    } else {
-      console.log(`Using existing bucket: ${BUCKET_NAME} (public: ${attachmentBucket.public})`);
-    }
-    
-    const attachments = [];
-    
-    // Upload each file to storage
     for (const file of files) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        console.error(`File ${file.name} exceeds 5MB limit`);
-        toast({
-          title: 'File Too Large',
-          description: `${file.name} exceeds the 5MB limit.`,
-          variant: 'destructive',
-        });
-        continue;
-      }
-      
-      // Create a unique file path with timestamp to prevent collisions
-      const timestamp = new Date().getTime();
-      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_'); // Sanitize filename
-      const filePath = `uploads/${messageId}/${timestamp}_${safeName}`;
-      
-      console.log(`Uploading file: ${file.name} (${file.size} bytes) to path: ${filePath}`);
+      const fileId = uuidv4();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${fileId}.${fileExt}`;
+      const filePath = `message-attachments/${messageId}/${fileName}`;
       
       // Upload the file
       const { data: uploadData, error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
+        .from('message_attachments')
+        .upload(filePath, file);
       
       if (uploadError) {
         console.error('Error uploading file:', uploadError);
-        toast({
-          title: 'Upload Failed',
-          description: `Failed to upload ${file.name}. Please try again.`,
-          variant: 'destructive',
-        });
         continue;
       }
       
-      console.log('File uploaded successfully:', filePath);
-      
-      // Get the public URL for the file
+      // Get the public URL
       const { data: urlData } = await supabase.storage
-        .from(BUCKET_NAME)
+        .from('message_attachments')
         .getPublicUrl(filePath);
       
-      if (!urlData || !urlData.publicUrl) {
-        console.error('Error getting public URL for file');
+      const fileUrl = urlData?.publicUrl;
+      
+      // Create attachment record
+      const { data: attachment, error: attachmentError } = await supabase
+        .from('message_attachments')
+        .insert({
+          message_id: messageId,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.type,
+          file_url: fileUrl
+        })
+        .select()
+        .single();
+      
+      if (attachmentError) {
+        console.error('Error creating attachment record:', attachmentError);
         continue;
       }
       
-      console.log('Public URL:', urlData.publicUrl);
-      
-      // Add attachment to the list
-      attachments.push({
-        message_id: messageId,
-        file_name: file.name,
-        file_path: filePath,
-        file_size: file.size,
-        file_type: file.type
-      });
-      
-      // Log successful upload for verification
-      console.log(`File attachment record created for ${file.name}`);
+      attachments.push(attachment as unknown as MessageAttachment);
     }
     
-    // Insert attachments into the database
-    if (attachments.length > 0) {
-      console.log(`Inserting ${attachments.length} attachment records into message_attachments table`);
-      
-      const { data: insertData, error: insertError } = await supabase
-        .from('message_attachments')
-        .insert(attachments)
-        .select();
-      
-      if (insertError) {
-        console.error('Error inserting attachments:', insertError);
-        toast({
-          title: 'Database Error',
-          description: 'Failed to save attachment information.',
-          variant: 'destructive',
-        });
-        return false;
-      }
-      
-      console.log('Attachment records inserted successfully:', insertData);
-      
-      // Verify attachments were saved correctly
-      const { data: savedAttachments, error: verifyError } = await supabase
-        .from('message_attachments')
-        .select('*')
-        .eq('message_id', messageId);
-      
-      if (verifyError || !savedAttachments || savedAttachments.length === 0) {
-        console.error('Error verifying attachments:', verifyError);
-        return false;
-      }
-      
-      console.log(`${savedAttachments.length} attachments saved successfully for message ${messageId}`);
-    }
-    
-    return true;
+    return attachments;
   } catch (error) {
-    console.error('Error handling file attachments:', error);
+    console.error('Error uploading attachments:', error);
     toast({
       title: 'Error',
-      description: 'Failed to process file attachments. Please try again.',
+      description: 'Failed to upload attachments. Please try again.',
       variant: 'destructive',
     });
-    return false;
+    return [];
   }
 }
 
 /**
- * Send a message to a specific contractor
- * @param projectId The project ID
- * @param contractorId The contractor ID
- * @param content The message content
- * @param files Optional array of files to attach
- * @returns Promise resolving to true if successful, false otherwise
+ * Send an individual message to a specific recipient
+ * @param projectId - The project ID
+ * @param recipientId - The recipient ID
+ * @param content - The message content
+ * @param files - Optional files to attach
+ * @returns Success status
  */
 export async function sendIndividualMessage(
   projectId: string,
-  contractorId: string,
+  recipientId: string,
   content: string,
-  files?: File[]
+  files: File[] = []
 ): Promise<boolean> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to send messages.',
-        variant: 'destructive',
-      });
+    // Get the current user ID - require authentication
+    const senderId = await getUserId();
+  
+    if (!senderId) {
+      console.error('Authentication required to send messages');
       return false;
     }
-    
-    // Get the contractor's alias
-    const alias = await getContractorAlias(projectId, contractorId);
-    
-    // Create the message
+  
+    console.log('Sending individual message:', {
+      projectId,
+      senderId,
+      recipientId,
+      content,
+      filesCount: files.length
+    });
+  
+    // Step 1: Create the message in the messages table (without recipient_id)
     const { data: message, error: messageError } = await supabase
       .from('messages')
       .insert({
         project_id: projectId,
-        sender_id: user.id,
-        recipient_id: contractorId,
+        sender_id: senderId,
         content,
-        message_type: 'individual',
-        contractor_alias: alias
+        message_type: 'individual'
       })
       .select()
       .single();
     
     if (messageError) {
-      console.error('Error sending message:', messageError);
+      console.error('Error creating message:', messageError);
+      return false;
+    }
+  
+    
+    console.log('Message created successfully:', message);
+    
+    // Step 2: Create an entry in the message_recipients table
+    const { error: recipientError } = await supabase
+      .from('message_recipients')
+      .insert({
+        message_id: message.id,
+        recipient_id: recipientId
+      });
+    
+    if (recipientError) {
+      console.error('Error creating message recipient:', recipientError);
       return false;
     }
     
-    // Handle file attachments if any
-    if (files && files.length > 0) {
-      const attachmentsSuccess = await handleFileAttachments(message.id, files);
-      if (!attachmentsSuccess) {
-        console.error('Error handling file attachments');
-      }
+    console.log('Message recipient created successfully for:', recipientId);
+    
+    // Step 3: Upload files if any
+    if (files.length > 0) {
+      await uploadAttachments(message.id, files);
     }
     
     return true;
   } catch (error) {
-    console.error('Error sending individual message:', error);
+    console.error('Error in sendIndividualMessage:', error);
     return false;
   }
 }
 
 /**
- * Send a message to all contractors for a project
+ * Send a group message to all contractors for a project
  * @param projectId The project ID
  * @param content The message content
  * @param files Optional array of files to attach
@@ -516,75 +486,77 @@ export async function sendIndividualMessage(
 export async function sendGroupMessage(
   projectId: string,
   content: string,
-  files?: File[]
+  files: File[] = []
 ): Promise<boolean> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to send messages.',
-        variant: 'destructive',
-      });
+    // Get the current user ID - require authentication
+    const senderId = await getUserId();
+    
+    if (!senderId) {
+      throw new Error('Authentication required to send messages');
+    }
+    
+    // Get all contractors for this project
+    const { data: contractors, error: contractorsError } = await supabase
+      .from('bids')
+      .select('contractor_id')
+      .eq('project_id', projectId)
+      .eq('status', 'submitted');
+    
+    if (contractorsError) {
+      console.error('Error getting contractors:', contractorsError);
       return false;
     }
     
-    // Get all contractors with aliases for this project
-    const contractors = await getContractorsWithAliases(projectId);
-    
-    if (contractors.length === 0) {
-      toast({
-        title: 'No contractors',
-        description: 'There are no contractors to message for this project.',
-        variant: 'destructive',
-      });
+    if (!contractors || contractors.length === 0) {
+      console.error('No contractors found for this project');
       return false;
     }
     
-    // Create the group message
+    // Get unique contractor IDs
+    const contractorIds = [...new Set(contractors.map((c: any) => c.contractor_id))];
+    
+    // Step 1: Create the group message in the messages table
     const { data: message, error: messageError } = await supabase
       .from('messages')
       .insert({
         project_id: projectId,
-        sender_id: user.id,
-        recipient_id: null, // null for group messages
+        sender_id: senderId,
         content,
-        message_type: 'group',
-        contractor_alias: null // null for group messages
+        message_type: 'group'
       })
       .select()
       .single();
     
     if (messageError) {
-      console.error('Error sending group message:', messageError);
+      console.error('Error creating group message:', messageError);
       return false;
     }
     
-    // Create message recipients (all contractors for this project)
-    const recipients = contractors.map(contractor => ({
+    console.log('Group message created successfully:', message);
+    
+    // Step 2: Create entries in the message_recipients table for all contractors
+    const messageRecipients = contractorIds.map(contractorId => ({
       message_id: message.id,
-      recipient_id: contractor.id
+      recipient_id: contractorId
     }));
     
-    // Insert recipients
     const { error: recipientsError } = await supabase
       .from('message_recipients')
-      .insert(recipients);
+      .insert(messageRecipients);
     
     if (recipientsError) {
-      console.error('Error adding message recipients:', recipientsError);
+      console.error('Error creating message recipients:', recipientsError);
+      return false;
     }
     
-    // Handle file attachments if any
-    if (files && files.length > 0) {
-      const attachmentsSuccess = await handleFileAttachments(message.id, files);
-      if (!attachmentsSuccess) {
-        console.error('Error handling file attachments');
-      }
+    console.log('Message recipients created successfully for contractors:', contractorIds);
+    
+    // Step 3: Upload files if any
+    if (files.length > 0) {
+      await uploadAttachments(message.id, files);
     }
     
     return true;
@@ -595,52 +567,45 @@ export async function sendGroupMessage(
 }
 
 /**
- * Get messages for a project, including both individual and group messages
- * @param projectId The project ID
- * @param contractorId Optional contractor ID for filtering individual messages
- * @returns Promise resolving to an array of formatted messages
+ * Get messages for a project
+ * @param projectId - The project ID
+ * @param contractorId - Optional contractor ID for filtering individual messages
+ * @returns Array of formatted messages
  */
 export async function getProjectMessages(
   projectId: string,
   contractorId?: string
 ): Promise<FormattedMessage[]> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        title: 'Error',
-        description: 'You must be logged in to view messages.',
-        variant: 'destructive',
-      });
-      return [];
-    }
+    // Get the current user ID (or fallback for development)
+    const userId = await getUserId();
     
-    // Get all contractors with aliases for this project
-    const contractors = await getContractorsWithAliases(projectId);
+    console.log('Getting messages for project:', projectId, 'and user:', userId);
     
-    // Query for messages
-    let query = supabase
+    // Step 1: Get all messages for this project
+    const { data: messages, error: messagesError } = await supabase
       .from('messages')
       .select(`
-        *,
-        message_attachments (*)
+        id,
+        project_id,
+        sender_id,
+        content,
+        message_type,
+        contractor_alias,
+        created_at,
+        message_attachments (
+          id,
+          file_name,
+          file_size,
+          file_type,
+          file_url,
+          created_at
+        )
       `)
       .eq('project_id', projectId)
       .order('created_at', { ascending: true });
-    
-    // If contractorId is provided, filter for individual messages with that contractor
-    if (contractorId) {
-      query = query.or(`and(message_type.eq.individual,or(and(sender_id.eq.${user.id},recipient_id.eq.${contractorId}),and(sender_id.eq.${contractorId},recipient_id.eq.${user.id})))`);
-    } else {
-      // Otherwise, get all messages for this project (both individual and group)
-      query = query.or(`or(message_type.eq.group,and(message_type.eq.individual,or(sender_id.eq.${user.id},recipient_id.eq.${user.id})))`);
-    }
-    
-    const { data: messages, error: messagesError } = await query;
     
     if (messagesError) {
       console.error('Error getting messages:', messagesError);
@@ -648,64 +613,187 @@ export async function getProjectMessages(
     }
     
     if (!messages || messages.length === 0) {
+      console.log('No messages found for project:', projectId);
       return [];
     }
     
-    // Process messages with attachments
-    const formattedMessages: FormattedMessage[] = await Promise.all(
-      messages.map(async (message) => {
-        // Check if the current user is the sender
-        const isOwn = message.sender_id === user.id;
-        
-        // Get sender alias if not own message
-        let senderAlias: string | undefined = undefined;
-        if (!isOwn && message.contractor_alias) {
-          senderAlias = message.contractor_alias;
-        } else if (!isOwn) {
-          // Try to get alias from contractor_aliases table
-          const { data: aliasData } = await supabase
-            .from('contractor_aliases')
-            .select('alias')
-            .eq('project_id', projectId)
-            .eq('contractor_id', message.sender_id)
-            .single();
-          
-          senderAlias = aliasData?.alias;
-        }
-        
-        // Get attachments if any
-        const { data: attachments } = await supabase
-          .from('message_attachments')
-          .select('*')
-          .eq('message_id', message.id);
-        
-        // Format attachments
-        const formattedAttachments = attachments?.map((attachment: any) => ({
-          id: attachment.id,
-          fileName: attachment.file_name,
-          fileUrl: attachment.file_url,
-          fileType: attachment.file_type,
-          fileSize: attachment.file_size
-        })) || [];
-        
-        return {
-          id: message.id,
-          senderId: message.sender_id,
-          senderAlias,
-          content: message.content,
-          timestamp: message.created_at,
-          isOwn,
-          isGroup: message.message_type === 'group',
-          clientId: `msg-${message.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-          attachments: formattedAttachments.length > 0 ? formattedAttachments : undefined
-        };
-      })
-    );
+    console.log(`Found ${messages.length} messages for project:`, projectId);
+    
+    // Step 2: Get all message IDs
+    const messageIds = messages.map(m => m.id);
+    
+    // Step 3: Get recipients for these messages
+    const { data: recipients, error: recipientsError } = await supabase
+      .from('message_recipients')
+      .select('message_id, recipient_id')
+      .in('message_id', messageIds);
+    
+    if (recipientsError) {
+      console.error('Error getting message recipients:', recipientsError);
+    }
+    
+    // Step 4: Get contractor aliases
+    const { data: aliases, error: aliasesError } = await supabase
+      .from('contractor_aliases')
+      .select('contractor_id, alias')
+      .eq('project_id', projectId);
+    
+    if (aliasesError) {
+      console.error('Error getting contractor aliases:', aliasesError);
+    }
+    
+    // Step 5: Format messages
+    const formattedMessages: FormattedMessage[] = messages.map(message => {
+      // Get recipients for this message
+      const messageRecipients = recipients?.filter(r => r.message_id === message.id) || [];
+      
+      // For contractors, show all messages in the project
+      // This ensures the full conversation thread is visible
+      // and avoids client-side exceptions from complex filtering
+      
+      // Get sender alias if it's a contractor
+      const senderAlias = message.contractor_alias || 
+        aliases?.find(a => a.contractor_id === message.sender_id)?.alias || null;
+      
+      // Format attachments
+      const formattedAttachments = message.message_attachments?.map((attachment: any) => ({
+        id: attachment.id,
+        fileName: attachment.file_name,
+        fileUrl: attachment.file_url,
+        fileType: attachment.file_type,
+        fileSize: attachment.file_size
+      })) || [];
+      
+      return {
+        id: message.id,
+        senderId: message.sender_id,
+        senderAlias,
+        content: message.content,
+        timestamp: message.created_at,
+        isOwn: message.sender_id === userId,
+        isGroup: message.message_type === 'group',
+        attachments: formattedAttachments
+      };
+    }).filter(Boolean) as FormattedMessage[];
     
     return formattedMessages;
   } catch (error) {
     console.error('Error getting project messages:', error);
     return [];
+  }
+}
+
+/**
+ * Subscribe to real-time messages for a project
+ * @param projectId The project ID
+ * @param userId The current user ID
+ * @param callback Function to call when a new message is received
+ * @returns Unsubscribe function
+ */
+export function subscribeToMessages(
+  projectId: string,
+  userId: string,
+  callback: (message: FormattedMessage) => void
+): () => void {
+  try {
+    const supabase = getSupabaseClient();
+    
+    console.log('Setting up real-time subscription for messages:', { projectId, userId });
+    
+    // Subscribe to new messages in the messages table
+    const subscription = supabase
+      .channel('messages-channel')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `project_id=eq.${projectId}`
+        },
+        async (payload) => {
+          console.log('New message received via subscription:', payload);
+          
+          const newMessage = payload.new as any;
+          
+          // Check if this message is relevant to the current user
+          // (they are either the sender or a recipient)
+          if (newMessage.sender_id !== userId) {
+            // Check if the user is a recipient of this message
+            const { data: recipient, error: recipientError } = await supabase
+              .from('message_recipients')
+              .select('*')
+              .eq('message_id', newMessage.id)
+              .eq('recipient_id', userId)
+              .single();
+            
+            if (recipientError || !recipient) {
+              console.log('Message is not for this user, ignoring');
+              return;
+            }
+          }
+          
+          // Get attachments for this message
+          const { data: messageAttachments, error: attachmentsError } = await supabase
+            .from('message_attachments')
+            .select('*')
+            .eq('message_id', newMessage.id);
+          
+          if (attachmentsError) {
+            console.error('Error getting attachments:', attachmentsError);
+          }
+          
+          // Get sender alias if it's a contractor
+          let senderAlias = newMessage.contractor_alias;
+          
+          if (!senderAlias && newMessage.sender_id !== userId) {
+            const { data: alias, error: aliasError } = await supabase
+              .from('contractor_aliases')
+              .select('alias')
+              .eq('project_id', projectId)
+              .eq('contractor_id', newMessage.sender_id)
+              .single();
+            
+            if (!aliasError && alias) {
+              senderAlias = alias.alias;
+            }
+          }
+          
+          // Format attachments
+          const formattedAttachments = messageAttachments?.map((attachment: any) => ({
+            id: attachment.id,
+            fileName: attachment.file_name,
+            fileUrl: attachment.file_url,
+            fileType: attachment.file_type,
+            fileSize: attachment.file_size
+          })) || [];
+          
+          // Format the message
+          const formattedMessage: FormattedMessage = {
+            id: newMessage.id,
+            senderId: newMessage.sender_id,
+            senderAlias,
+            content: newMessage.content,
+            timestamp: newMessage.created_at,
+            isOwn: newMessage.sender_id === userId,
+            isGroup: newMessage.message_type === 'group',
+            attachments: formattedAttachments
+          };
+          
+          // Call the callback with the formatted message
+          callback(formattedMessage);
+        }
+      )
+      .subscribe();
+    
+    // Return unsubscribe function
+    return () => {
+      console.log('Unsubscribing from messages channel');
+      supabase.channel('messages-channel').unsubscribe();
+    };
+  } catch (error) {
+    console.error('Error subscribing to messages:', error);
+    return () => {};
   }
 }
 
@@ -716,50 +804,21 @@ export async function getProjectMessages(
  */
 export async function markMessageAsRead(messageId: string): Promise<boolean> {
   try {
-    // Ensure we have authentication
-    await ensureAuthentication();
+    const supabase = getSupabaseClient();
     
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    // Get the current user ID (or fallback for development)
+    const userId = await getUserId();
+    
+    // Update the message recipient record
+    const { error } = await supabase
+      .from('message_recipients')
+      .update({ read_at: new Date().toISOString() })
+      .eq('message_id', messageId)
+      .eq('recipient_id', userId);
+    
+    if (error) {
+      console.error('Error marking message as read:', error);
       return false;
-    }
-    
-    // Check if this is an individual message where the user is the recipient
-    const { data: message, error: messageError } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('id', messageId)
-      .single();
-    
-    if (messageError) {
-      console.error('Error getting message:', messageError);
-      return false;
-    }
-    
-    if (message.message_type === 'individual' && message.recipient_id === user.id) {
-      // Mark the individual message as read
-      const { error: updateError } = await supabase
-        .from('messages')
-        .update({ read_at: new Date().toISOString() })
-        .eq('id', messageId);
-      
-      if (updateError) {
-        console.error('Error marking message as read:', updateError);
-        return false;
-      }
-    } else if (message.message_type === 'group') {
-      // For group messages, mark the recipient entry as read
-      const { error: updateError } = await supabase
-        .from('message_recipients')
-        .update({ read_at: new Date().toISOString() })
-        .eq('message_id', messageId)
-        .eq('recipient_id', user.id);
-      
-      if (updateError) {
-        console.error('Error marking group message as read:', updateError);
-        return false;
-      }
     }
     
     return true;
@@ -767,102 +826,4 @@ export async function markMessageAsRead(messageId: string): Promise<boolean> {
     console.error('Error marking message as read:', error);
     return false;
   }
-}
-
-/**
- * Subscribe to new messages for a project
- * @param projectId The project ID
- * @param contractorId Optional contractor ID for filtering individual messages
- * @param callback Function to call when a new message is received
- * @returns Unsubscribe function
- */
-export function subscribeToMessages(
-  projectId: string,
-  contractorId: string | null,
-  callback: (message: FormattedMessage) => void
-): () => void {
-  // Initialize with a no-op unsubscribe function
-  let unsubscribe = () => {};
-  
-  // Set up the subscription asynchronously
-  (async () => {
-    try {
-      // Ensure we have authentication
-      await ensureAuthentication();
-      
-      // Get the current user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error('User not authenticated for subscription');
-        return;
-      }
-      
-      // Subscribe to new messages
-      const subscription = supabase
-        .channel(`messages:${projectId}`)
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `project_id=eq.${projectId}`
-        }, async (payload) => {
-          // Process the new message
-          const newMessage = payload.new as any;
-          
-          // Check if this is a message we should handle
-          const isGroupMessage = newMessage.message_type === 'group';
-          const isForSelectedContractor = contractorId 
-            ? (newMessage.sender_id === contractorId || newMessage.recipient_id === contractorId)
-            : true;
-          const isForCurrentUser = newMessage.sender_id === user.id || newMessage.recipient_id === user.id;
-          
-          if ((isGroupMessage || (isForSelectedContractor && isForCurrentUser))) {
-            // Format the message
-            const formattedMessage: FormattedMessage = {
-              id: newMessage.id,
-              senderId: newMessage.sender_id,
-              senderAlias: undefined, // Own messages don't need sender alias
-              content: newMessage.content,
-              timestamp: newMessage.created_at,
-              isOwn: newMessage.sender_id === user.id,
-              isGroup: isGroupMessage,
-              clientId: `msg-${newMessage.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-              attachments: undefined
-            };
-            
-            // Get attachments if any
-            const { data: attachments } = await supabase
-              .from('message_attachments')
-              .select('*')
-              .eq('message_id', newMessage.id);
-            
-            // Format attachments
-            const formattedAttachments = attachments?.map(attachment => ({
-              id: attachment.id,
-              fileName: attachment.file_name,
-              fileUrl: attachment.file_url,
-              fileType: attachment.file_type,
-              fileSize: attachment.file_size
-            })) || [];
-            
-            // Update formatted message with attachments
-            formattedMessage.attachments = formattedAttachments.length > 0 ? formattedAttachments : undefined;
-            
-            // Call the callback with the new message
-            callback(formattedMessage);
-          }
-        })
-        .subscribe();
-      
-      // Update the unsubscribe function
-      unsubscribe = () => {
-        subscription.unsubscribe();
-      };
-    } catch (error) {
-      console.error('Error setting up message subscription:', error);
-    }
-  })();
-  
-  // Return the unsubscribe function
-  return () => unsubscribe();
 }
