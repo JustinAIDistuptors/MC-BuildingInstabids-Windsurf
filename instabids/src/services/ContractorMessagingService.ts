@@ -201,6 +201,25 @@ export class ContractorMessagingService {
   }
   
   /**
+   * Assign aliases (A, B, C, etc.) to contractors who have interacted with a project
+   * @param projectId - The project ID
+   * @returns Promise resolving to true if successful, false otherwise
+   */
+  static async assignContractorAliases(projectId: string): Promise<boolean> {
+    try {
+      const isAuthenticated = await ContractorMessagingService.ensureAuthentication();
+      if (!isAuthenticated) {
+        throw new Error('Authentication required to assign contractor aliases');
+      }
+      
+      return await SupabaseMessaging.assignContractorAliases(projectId);
+    } catch (error) {
+      console.error('Error assigning contractor aliases:', error);
+      return false;
+    }
+  }
+  
+  /**
    * Format date for display
    * @param timestamp - ISO timestamp string
    * @returns Formatted date string (e.g., "Apr 12, 2025")

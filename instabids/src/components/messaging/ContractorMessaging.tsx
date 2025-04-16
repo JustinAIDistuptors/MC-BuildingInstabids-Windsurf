@@ -74,6 +74,15 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       setLoading(true);
       setError(null);
       
+      // First, ensure contractor aliases are assigned based on both bids and messages
+      try {
+        await ContractorMessagingService.assignContractorAliases(projectId);
+        console.log('Contractor aliases assigned or verified');
+      } catch (err) {
+        console.error('Error assigning contractor aliases:', err);
+        // Continue anyway - aliases might already be assigned
+      }
+      
       // Get contractors with aliases
       let contractorsData: ContractorWithAlias[] = [];
       try {
@@ -85,6 +94,7 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
           // Make sure each contractor has an alias (A, B, C, etc.)
           const contractorsWithAliases = contractorsData.map((contractor, index) => ({
             ...contractor,
+            // Use the database alias if available, otherwise generate one based on index
             alias: contractor.alias || String.fromCharCode(65 + index) // A, B, C, etc.
           }));
           
@@ -93,7 +103,11 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
           
           // Set the first contractor as selected by default
           if (contractorsWithAliases[0]?.id) {
-            setSelectedContractorId(contractorsWithAliases[0].id);
+            const firstContractorId = contractorsWithAliases[0].id;
+            if (firstContractorId) {
+              setSelectedContractorId(firstContractorId);
+              console.log('Auto-selected contractor:', firstContractorId);
+            }
           }
         }
       } catch (err) {
@@ -260,34 +274,20 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       console.log(`Message: ${msg.id}, sender: ${msg.senderId}, isOwn: ${msg.isOwn}`);
     });
     
-    // Create a map of contractor IDs to aliases (A, B, C, etc.)
-    const contractorAliasMap = new Map();
-    
-    // First collect all unique contractor IDs from messages
-    const contractorIds = [...new Set(messages
-      .filter(msg => !msg.isOwn)
-      .map(msg => msg.senderId))];
-    
-    // Assign aliases (A, B, C, etc.) to each contractor ID
-    contractorIds.forEach((id, index) => {
-      contractorAliasMap.set(id, String.fromCharCode(65 + index)); // A, B, C, etc.
-    });
-    
-    console.log('Contractor alias map:', Object.fromEntries(contractorAliasMap));
+    // Use the contractor aliases from the database instead of generating them client-side
+    // This ensures consistency with the database and other components
     
     // For homeowner view, process messages to show correct ownership and aliases
     return messages.map(message => {
-      // Find the contractor for this message
+      // Find the contractor for this message to get their alias
       const contractor = contractors.find(c => c.id === message.senderId);
-      // Get the assigned alias from our map, or use the one from the database
-      const alias = contractorAliasMap.get(message.senderId) || contractor?.alias || 'A';
       
       return {
         ...message,
         // Force contractor messages to show as 'not own' (left side)
         isOwn: message.senderId === userId,
-        // Use the assigned alias
-        senderAlias: alias
+        // Use the contractor's alias from our loaded contractors list
+        senderAlias: contractor?.alias || message.senderAlias || 'A'
       };
     });
   };
@@ -316,21 +316,17 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
           <div className="mt-2">
             <Select
               value={selectedContractorId}
-              onValueChange={setSelectedContractorId}
+              onValueChange={(value: string) => setSelectedContractorId(value)}
               disabled={contractors.length === 0}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a contractor" />
               </SelectTrigger>
               <SelectContent>
-                {contractors.map(contractor => (
+                {contractors.map((contractor) => (
                   <SelectItem key={contractor.id} value={contractor.id || ''}>
                     Contractor {contractor.alias || 'A'}
-                    {contractor.bidAmount && (
-                      <span className="ml-2 text-xs text-gray-500">
-                        (Bid: ${contractor.bidAmount})
-                      </span>
-                    )}
+                    {contractor.bidAmount && ` - $${contractor.bidAmount.toLocaleString()}`}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -389,6 +385,9 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
                         </div>
                         <span className="text-xs font-medium">
                           Contractor {message.senderAlias || 'A'}
+                        </span>
+                        <span className="text-xs text-gray-500 ml-2">
+                          {message.timestamp && ContractorMessagingService.formatTimestamp(message.timestamp)}
                         </span>
                       </div>
                     )}

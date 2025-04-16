@@ -115,7 +115,8 @@ export async function getUserId(): Promise<string | null> {
 }
 
 /**
- * Assign aliases (A, B, C, D, E) to contractors who have bid on a project
+ * Assign aliases (A, B, C, D, E) to contractors who have interacted with a project
+ * Priority is given to contractors who interacted first (either through bids or messages)
  * @param projectId The project ID
  * @returns Promise resolving to true if successful, false otherwise
  */
@@ -134,28 +135,74 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
       return true;
     }
     
-    // Get all bids for this project with contractor information
-    const { data: bids, error: bidsError } = await supabase
-      .from('bids')
-      .select('contractor_id')
-      .eq('project_id', projectId)
-      .eq('status', 'submitted');
+    // Get all contractors who have interacted with this project
+    const contractorInteractions: Array<{contractorId: string, timestamp: string}> = [];
     
-    if (bidsError) {
-      console.error('Error getting bids:', bidsError);
+    // 1. Get contractors from bids
+    try {
+      const { data: bids, error: bidsError } = await supabase
+        .from('bids')
+        .select('contractor_id, created_at')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true });
+      
+      if (!bidsError && bids && bids.length > 0) {
+        bids.forEach((bid: any) => {
+          contractorInteractions.push({
+            contractorId: bid.contractor_id,
+            timestamp: bid.created_at
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Error getting bids:', err);
+      // Continue to try getting contractors from messages
+    }
+    
+    // 2. Get contractors from messages
+    try {
+      const { data: messages, error: messagesError } = await supabase
+        .from('messages')
+        .select('sender_id, created_at')
+        .eq('project_id', projectId)
+        .not('sender_id', 'is', null)
+        .order('created_at', { ascending: true });
+      
+      if (!messagesError && messages && messages.length > 0) {
+        messages.forEach((message: any) => {
+          contractorInteractions.push({
+            contractorId: message.sender_id,
+            timestamp: message.created_at
+          });
+        });
+      }
+    } catch (err) {
+      console.error('Error getting messages:', err);
+    }
+    
+    // No interactions found
+    if (contractorInteractions.length === 0) {
+      console.log('No contractor interactions found for this project');
       return false;
     }
     
-    if (!bids || bids.length === 0) {
-      console.log('No bids found for this project');
-      return false;
-    }
+    // Sort interactions by timestamp (earliest first)
+    contractorInteractions.sort((a, b) => {
+      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+    });
     
-    // Get unique contractor IDs
-    const contractorIds = [...new Set(bids.map((b: any) => b.contractor_id))];
+    // Get unique contractor IDs while preserving order (first interaction)
+    const uniqueContractorIds: string[] = [];
+    contractorInteractions.forEach(interaction => {
+      if (!uniqueContractorIds.includes(interaction.contractorId)) {
+        uniqueContractorIds.push(interaction.contractorId);
+      }
+    });
+    
+    console.log('Unique contractor IDs in order of first interaction:', uniqueContractorIds);
     
     // Generate aliases (A, B, C, D, E, etc.)
-    const aliases = contractorIds.map((contractorId, index) => {
+    const aliases = uniqueContractorIds.map((contractorId, index) => {
       const alias = String.fromCharCode(65 + index); // A, B, C, D, E, ...
       return {
         project_id: projectId,
@@ -174,7 +221,7 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
       return false;
     }
     
-    console.log('Aliases assigned successfully');
+    console.log('Aliases assigned successfully:', aliases);
     return true;
   } catch (error) {
     console.error('Error assigning aliases:', error);
