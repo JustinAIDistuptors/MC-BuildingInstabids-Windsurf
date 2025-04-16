@@ -1,450 +1,486 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { ContractorMessagingService, FormattedMessage, ContractorWithAlias } from '@/services/ContractorMessagingService';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from '@/components/ui/use-toast';
-import { Loader2 } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ErrorBoundary } from '@/components/ui/error-boundary';
-import { 
-  ContractorMessagingService, 
-  ContractorWithAlias, 
-  FormattedMessage 
-} from '@/services/ContractorMessagingService';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Database } from '@/types/supabase';
 
-interface ContractorMessagingProps {
+export interface ContractorMessagingProps {
   projectId: string;
   projectTitle?: string;
 }
 
 /**
- * ContractorMessaging component for homeowners to message contractors
- * Supports both individual and group messaging with file attachments
+ * Messaging component for homeowners to communicate with contractors
  */
 export default function ContractorMessaging({ projectId, projectTitle }: ContractorMessagingProps) {
-  // Basic state
+  // State
   const [messages, setMessages] = useState<FormattedMessage[]>([]);
   const [contractors, setContractors] = useState<ContractorWithAlias[]>([]);
   const [selectedContractorId, setSelectedContractorId] = useState<string>('');
   const [isGroupMessage, setIsGroupMessage] = useState<boolean>(false);
-  const [newMessage, setNewMessage] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sending, setSending] = useState<boolean>(false);
-  
-  // File handling
+  const [sending, setSending] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Load data on mount
+  // Supabase client
+  const supabase = createClientComponentClient<Database>();
+  
+  // Load user data and messages on component mount
   useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        // First ensure authentication is set up
-        await ContractorMessagingService.ensureAuthentication();
-        
-        // Get contractors with aliases
-        const contractorsData = await ContractorMessagingService.getContractorsWithAliases(projectId);
-        
-        if (contractorsData && contractorsData.length > 0) {
-          setContractors(contractorsData);
-          // Set the first contractor as selected by default
-          setSelectedContractorId(contractorsData[0].id);
-        } else {
-          // Handle case where no contractors are found
-          console.log('No contractors found for this project');
-        }
-        
-        // Get messages
-        const messagesData = await ContractorMessagingService.getMessages(projectId);
-        
-        if (messagesData) {
-          // Add unique client IDs to messages for React keys
-          const messagesWithClientIds = messagesData.map(message => ({
-            ...message,
-            clientId: `msg-${message.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-          }));
-          
-          setMessages(messagesWithClientIds);
-        } else {
-          // Handle case where no messages are found
-          setMessages([]);
-        }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error loading messaging data:', err);
-        setError(`Failed to load messaging data: ${err instanceof Error ? err.message : String(err)}`);
-        setLoading(false);
-        
-        // Show toast notification
-        toast({
-          title: "Error loading messages",
-          description: "There was a problem loading the messaging data. Please try again.",
-          variant: "destructive"
-        });
+    const initialize = async () => {
+      const user = await getUserData();
+      if (user) {
+        await loadData();
       }
-    }
-    
-    loadData();
-    
-    // Set up subscription to new messages
-    const unsubscribe = ContractorMessagingService.subscribeToMessages(
-      projectId,
-      null, // Get all messages for the project
-      (newMessage) => {
-        setMessages(prev => {
-          // Check if message already exists to avoid duplicates
-          const exists = prev.some(msg => msg.id === newMessage.id);
-          if (exists) return prev;
-          
-          // Add clientId to new message for React key
-          const messageWithClientId = {
-            ...newMessage,
-            clientId: `msg-${newMessage.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
-          };
-          
-          return [...prev, messageWithClientId];
-        });
-      }
-    );
-    
-    // Clean up subscription on unmount
-    return () => {
-      unsubscribe();
     };
+    
+    initialize();
   }, [projectId]);
   
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Get current user data
+  const getUserData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        setUserId(user.id);
+        return user;
+      } else {
+        setError("You must be logged in to view messages");
+        return null;
+      }
+    } catch (err) {
+      console.error('Error getting user data:', err);
+      setError("Failed to authenticate user");
+      return null;
+    }
+  };
   
-  // Send a message
+  // Load contractors and messages
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Get contractors with aliases
+      let contractorsData: ContractorWithAlias[] = [];
+      try {
+        contractorsData = await ContractorMessagingService.getContractorsWithAliases(projectId);
+        console.log('Loaded contractors:', contractorsData);
+        
+        // Filter contractors to only include those who have bid or messaged
+        if (contractorsData && contractorsData.length > 0) {
+          // Make sure each contractor has an alias (A, B, C, etc.)
+          const contractorsWithAliases = contractorsData.map((contractor, index) => ({
+            ...contractor,
+            alias: contractor.alias || String.fromCharCode(65 + index) // A, B, C, etc.
+          }));
+          
+          setContractors(contractorsWithAliases);
+          console.log('Contractors with aliases:', contractorsWithAliases);
+          
+          // Set the first contractor as selected by default
+          if (contractorsWithAliases[0]?.id) {
+            setSelectedContractorId(contractorsWithAliases[0].id);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading contractors:', err);
+        toast.error('Failed to load contractor data');
+      }
+      
+      // Get messages
+      await loadMessages();
+      
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError('Failed to load messaging data');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Load messages function
+  const loadMessages = async () => {
+    if (!projectId) {
+      setError("Project ID is missing");
+      return;
+    }
+    
+    try {
+      console.log('Loading messages for project:', projectId);
+      
+      // Get all messages for this project
+      const messagesData = await ContractorMessagingService.getMessages(projectId);
+      console.log('Loaded messages:', messagesData);
+      
+      if (messagesData && messagesData.length > 0) {
+        // Add clientId for React keys
+        const messagesWithClientId = messagesData.map(msg => ({
+          ...msg,
+          clientId: `${msg.id}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+        }));
+        
+        setMessages(messagesWithClientId);
+        console.log('Set messages:', messagesWithClientId.length);
+        
+        // Extract unique contractor IDs from messages
+        const contractorIds = [...new Set(messagesWithClientId
+          .filter(msg => !msg.isOwn)
+          .map(msg => msg.senderId))];
+          
+        console.log('Contractor IDs from messages:', contractorIds);
+        
+        // If we have contractors but no selected contractor, select the first one
+        if (contractorIds.length > 0 && !selectedContractorId) {
+          const firstContractorId = contractorIds[0];
+          if (firstContractorId) {
+            setSelectedContractorId(firstContractorId);
+            console.log('Auto-selected contractor:', firstContractorId);
+          }
+        }
+        
+        // Scroll to bottom after loading messages
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      } else {
+        setMessages([]);
+        console.log('No messages found for project');
+      }
+    } catch (err) {
+      console.error('Error loading messages:', err);
+      setError('Failed to load messages. Please try again.');
+    }
+  };
+  
+  // Handle file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFiles(Array.from(e.target.files));
+    }
+  };
+  
+  // Handle sending a message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() && files.length === 0) return;
+    if (!newMessage.trim() && files.length === 0) {
+      toast.error('Please enter a message or attach a file.');
+      return;
+    }
+    
+    if (!userId) {
+      toast.error('You must be logged in to send messages.');
+      return;
+    }
     
     if (!isGroupMessage && !selectedContractorId) {
-      toast({
-        title: 'Error',
-        description: 'Please select a contractor to message',
-        variant: 'destructive',
-      });
+      toast.error('Please select a contractor to message.');
       return;
     }
     
     try {
       setSending(true);
       
-      // Send message
-      const success = await ContractorMessagingService.sendMessage(
+      const { success } = await ContractorMessagingService.sendMessage({
         projectId,
-        newMessage,
-        isGroupMessage ? 'group' : 'individual',
-        isGroupMessage ? null : selectedContractorId,
+        message: newMessage,
+        recipientId: selectedContractorId,
         files
-      );
+      });
       
       if (success) {
-        // Clear input
         setNewMessage('');
         setFiles([]);
+        
+        // Add temporary message to UI
+        const tempMessage: FormattedMessage = {
+          id: `temp-${Date.now()}`,
+          clientId: `temp-${Date.now()}`,
+          senderId: userId,
+          content: newMessage,
+          timestamp: new Date().toISOString(),
+          isOwn: true,
+          isGroup: isGroupMessage,
+          attachments: files.map(file => ({
+            id: `temp-${file.name}`,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            fileUrl: URL.createObjectURL(file)
+          }))
+        };
+        
+        setMessages(prev => [...prev, tempMessage]);
+        
+        // Scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        
+        toast.success('Message sent successfully');
+        
+        // Reload messages after a short delay
+        setTimeout(() => {
+          loadMessages();
+        }, 1000);
       } else {
-        toast({
-          title: 'Error',
-          description: 'Failed to send message. Please try again.',
-          variant: 'destructive',
-        });
+        toast.error('Failed to send message');
       }
     } catch (err) {
       console.error('Error sending message:', err);
-      toast({
-        title: 'Error',
-        description: 'Failed to send message. Please try again.',
-        variant: 'destructive',
-      });
+      toast.error('Error sending message');
     } finally {
       setSending(false);
     }
   };
   
-  // Handle file input
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-  
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const newFiles = Array.from(e.target.files);
-      
-      // Check file size (max 5MB per file)
-      const oversizedFiles = newFiles.filter(file => file.size > 5 * 1024 * 1024);
-      if (oversizedFiles.length > 0) {
-        toast({
-          title: 'Error',
-          description: `Some files exceed the 5MB limit: ${oversizedFiles.map(f => f.name).join(', ')}`,
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      // Check total files (max 5)
-      if (files.length + newFiles.length > 5) {
-        toast({
-          title: 'Error',
-          description: 'You can attach a maximum of 5 files',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      setFiles(prev => [...prev, ...newFiles]);
-    }
-    
-    // Reset input
-    if (e.target.value) e.target.value = '';
-  };
-  
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-  };
-  
-  // Toggle between individual and group messaging
-  const toggleMessageType = () => {
+  // Toggle group messaging
+  const toggleGroupMessage = () => {
     setIsGroupMessage(!isGroupMessage);
   };
   
-  // Get contractor alias
-  const getContractorAlias = async (contractorId: string): Promise<string | null> => {
-    if (!contractors || !contractorId) return null;
+  // Get filtered messages based on selected contractor
+  const getFilteredMessages = () => {
+    console.log('Filtering messages:', messages.length, 'selectedContractorId:', selectedContractorId, 'userId:', userId);
     
-    // Find in local contractors first
-    const contractor = contractors.find(c => c.id === contractorId);
-    if (contractor) return contractor.alias;
+    // For debugging - log all messages
+    messages.forEach(msg => {
+      console.log(`Message: ${msg.id}, sender: ${msg.senderId}, isOwn: ${msg.isOwn}`);
+    });
     
-    // Otherwise fetch from service
-    return await ContractorMessagingService.getContractorAlias(projectId, contractorId);
+    // Create a map of contractor IDs to aliases (A, B, C, etc.)
+    const contractorAliasMap = new Map();
+    
+    // First collect all unique contractor IDs from messages
+    const contractorIds = [...new Set(messages
+      .filter(msg => !msg.isOwn)
+      .map(msg => msg.senderId))];
+    
+    // Assign aliases (A, B, C, etc.) to each contractor ID
+    contractorIds.forEach((id, index) => {
+      contractorAliasMap.set(id, String.fromCharCode(65 + index)); // A, B, C, etc.
+    });
+    
+    console.log('Contractor alias map:', Object.fromEntries(contractorAliasMap));
+    
+    // For homeowner view, process messages to show correct ownership and aliases
+    return messages.map(message => {
+      // Find the contractor for this message
+      const contractor = contractors.find(c => c.id === message.senderId);
+      // Get the assigned alias from our map, or use the one from the database
+      const alias = contractorAliasMap.get(message.senderId) || contractor?.alias || 'A';
+      
+      return {
+        ...message,
+        // Force contractor messages to show as 'not own' (left side)
+        isOwn: message.senderId === userId,
+        // Use the assigned alias
+        senderAlias: alias
+      };
+    });
   };
   
-  // Check if we have a valid selected contractor
-  const hasValidContractor = selectedContractorId !== '' && contractors.some(c => c.id === selectedContractorId);
-  
-  // Get contractor display name
-  const getContractorDisplay = () => {
-    if (!isGroupMessage && hasValidContractor) {
-      const contractor = contractors.find(c => c.id === selectedContractorId);
-      return contractor ? `Contractor ${contractor.alias}` : '';
-    }
-    return isGroupMessage ? 'Group Message' : '';
-  };
-  
-  // Render message list
-  const renderMessages = () => {
-    if (loading) {
-      return (
-        <div className="flex justify-center items-center h-[300px]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2">Loading messages...</span>
-        </div>
-      );
-    }
-    
-    if (error) {
-      return (
-        <Alert variant="destructive" className="my-4">
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      );
-    }
-    
-    if (messages.length === 0) {
-      return (
-        <div className="flex justify-center items-center h-[300px] text-muted-foreground">
-          No messages yet. Start the conversation!
-        </div>
-      );
-    }
-    
-    return (
-      <div className="space-y-4">
-        {messages.map((message) => (
-          <div 
-            key={message.clientId || `msg-${message.id}-${Math.random().toString(36).substring(2, 9)}`}
-            className={`flex ${message.isOwn ? 'justify-end' : 'justify-start'}`}
-          >
-            <div 
-              className={`max-w-[80%] rounded-lg p-3 ${
-                message.isOwn 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'bg-muted'
-              }`}
-            >
-              {!message.isOwn && (
-                <div className="flex items-center mb-1">
-                  <Avatar className="h-6 w-6 mr-2">
-                    <AvatarFallback>{message.senderAlias?.charAt(0) || 'C'}</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm font-medium">
-                    {message.senderAlias || 'Contractor'}
-                  </span>
-                </div>
-              )}
-              
-              <p className="text-sm">{message.content}</p>
-              
-              {message.attachments && message.attachments.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {message.attachments.map((attachment) => (
-                    <div 
-                      key={`${message.clientId}-attach-${attachment.id}-${Math.random().toString(36).substring(2, 7)}`}
-                      className="flex items-center text-xs"
-                    >
-                      <a 
-                        href={attachment.fileUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center hover:underline"
-                      >
-                        <span className="mr-1">📎</span>
-                        {attachment.fileName}
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              <div className="text-xs mt-1 opacity-70 text-right">
-                {ContractorMessagingService.formatTimestamp(message.timestamp)}
-              </div>
-            </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-    );
-  };
-  
-  // Render the component wrapped in an error boundary
   return (
-    <ErrorBoundary>
-      <Card className="h-[600px] flex flex-col">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg flex justify-between items-center">
-            <div>
-              {projectTitle ? `${projectTitle} - ` : ''}
-              {getContractorDisplay()}
+    <div className="flex flex-col h-full border rounded-md overflow-hidden bg-white shadow-sm">
+      {/* Header */}
+      <div className="p-4 border-b bg-white">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold">
+            Messages {projectTitle ? `- ${projectTitle}` : ''}
+          </h2>
+          
+          <div className="flex items-center space-x-2">
+            <span className="text-sm font-normal">Group Message</span>
+            <div 
+              className={`w-10 h-5 flex items-center rounded-full p-1 cursor-pointer ${isGroupMessage ? 'bg-blue-500' : 'bg-gray-300'}`}
+              onClick={toggleGroupMessage}
+            >
+              <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${isGroupMessage ? 'translate-x-5' : 'translate-x-0'}`}></div>
             </div>
-            <div className="flex items-center space-x-2">
-              <span className="text-sm font-normal">Group Message</span>
-              <Switch checked={isGroupMessage} onCheckedChange={toggleMessageType} />
-            </div>
-          </CardTitle>
-        </CardHeader>
-        
-        <CardContent className="flex-grow overflow-hidden p-4">
-          {renderMessages()}
-        </CardContent>
-        
-        <CardFooter className="flex flex-col space-y-2 pt-2">
-          <div className="flex flex-wrap gap-2 w-full">
-            {files.map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center bg-muted rounded-md p-1 pr-2 text-xs"
-              >
-                <span className="truncate max-w-[100px]">{file.name}</span>
-                <Button
-                  variant="ghost"
-                  className="h-4 w-4 ml-1 p-0"
-                  onClick={() => removeFile(index)}
-                >
-                  ×
-                </Button>
-              </div>
-            ))}
           </div>
-          
-          {!isGroupMessage && (
-            <div className="w-full">
-              <Label htmlFor="contractor-select" className="text-xs">
-                Select Contractor
-              </Label>
-              <Select
-                value={selectedContractorId}
-                onValueChange={setSelectedContractorId}
-                disabled={isGroupMessage}
-              >
-                <SelectTrigger id="contractor-select" className="w-full">
-                  <SelectValue placeholder="Select a contractor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {contractors.map((contractor) => (
-                    <SelectItem key={contractor.id} value={contractor.id}>
-                      Contractor {contractor.alias} ({contractor.full_name})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          
-          <div className="flex w-full space-x-2">
-            <div className="flex-grow">
-              <Textarea
-                placeholder={`Type a message to ${isGroupMessage ? 'all contractors' : hasValidContractor ? `Contractor ${getContractorAlias(selectedContractorId) ?? ''}` : 'selected contractor'}`}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                className="min-h-[80px]"
-              />
-              <div className="flex justify-between mt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={triggerFileInput}
-                >
-                  <span className="mr-2">📎</span>
-                  Attach Files
-                </Button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileChange}
-                  multiple
-                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                />
+        </div>
+        
+        {!isGroupMessage && (
+          <div className="mt-2">
+            <Select
+              value={selectedContractorId}
+              onValueChange={setSelectedContractorId}
+              disabled={contractors.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a contractor" />
+              </SelectTrigger>
+              <SelectContent>
+                {contractors.map(contractor => (
+                  <SelectItem key={contractor.id} value={contractor.id || ''}>
+                    Contractor {contractor.alias || 'A'}
+                    {contractor.bidAmount && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        (Bid: ${contractor.bidAmount})
+                      </span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        
+        <Button 
+          variant="outline" 
+          onClick={loadData} 
+          disabled={loading}
+          className="mt-2 text-sm py-1 px-3"
+        >
+          Refresh Messages
+        </Button>
+      </div>
+      
+      {/* Messages area */}
+      <div className="flex-grow overflow-y-auto p-4 bg-gray-50" style={{ maxHeight: '400px' }}>
+        {loading ? (
+          <div className="flex justify-center items-center h-full">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+            <span className="ml-2">Loading messages...</span>
+          </div>
+        ) : error ? (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <p className="font-bold">Error</p>
+            <p>{error}</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {messages.length === 0 ? (
+              <div className="flex justify-center items-center h-full text-gray-500">
+                No messages yet. Start the conversation!
               </div>
+            ) : (
+              getFilteredMessages().map((message) => (
+                <div
+                  key={message.clientId || message.id}
+                  className={`flex ${
+                    message.isOwn ? 'justify-end' : 'justify-start'
+                  }`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-lg p-3 ${
+                      message.isOwn
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 text-gray-800'
+                    }`}
+                    title={`Sender: ${message.senderId}, isOwn: ${message.isOwn}`}
+                  >
+                    {!message.isOwn && (
+                      <div className="flex items-center mb-1">
+                        <div className="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs mr-2">
+                          {message.senderAlias || 'A'}
+                        </div>
+                        <span className="text-xs font-medium">
+                          Contractor {message.senderAlias || 'A'}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <p className="text-sm">{message.content}</p>
+                    <p className="text-xs mt-1 opacity-70">
+                      {new Date(message.timestamp).toLocaleString()}
+                    </p>
+                    
+                    {message.attachments && message.attachments.length > 0 && (
+                      <div className="mt-2">
+                        {message.attachments.map((attachment, index) => (
+                          <a
+                            key={index}
+                            href={attachment.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block text-xs underline mt-1"
+                          >
+                            {attachment.fileName || `Attachment ${index + 1}`}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+      
+      {/* Message input area */}
+      <div className="p-4 border-t bg-white">
+        <div className="flex flex-col space-y-2">
+          <Textarea
+            placeholder="Type your message here..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            className="resize-none"
+            rows={3}
+            disabled={sending || (!isGroupMessage && !selectedContractorId)}
+          />
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                multiple
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending}
+                className="text-sm py-1 px-3"
+              >
+                Attach Files
+              </Button>
+              
+              {files.length > 0 && (
+                <span className="text-xs text-gray-500">
+                  {files.length} file{files.length !== 1 ? 's' : ''} selected
+                </span>
+              )}
             </div>
             
             <Button
               type="button"
               onClick={handleSendMessage}
-              disabled={sending || (newMessage.trim() === '' && files.length === 0)}
-              className="self-end"
+              disabled={
+                sending || 
+                (!newMessage.trim() && files.length === 0) || 
+                (!isGroupMessage && !selectedContractorId)
+              }
             >
               {sending ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <span className="flex items-center">
+                  <span className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></span>
+                  Sending...
+                </span>
               ) : (
-                <span className="mr-2">📤</span>
+                'Send Message'
               )}
-              Send
             </Button>
           </div>
-        </CardFooter>
-      </Card>
-    </ErrorBoundary>
+        </div>
+      </div>
+    </div>
   );
 }
