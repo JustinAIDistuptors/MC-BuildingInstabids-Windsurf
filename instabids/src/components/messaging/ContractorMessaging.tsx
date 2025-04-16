@@ -268,6 +268,7 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
   // Get filtered messages based on selected contractor
   const getFilteredMessages = () => {
     console.log('Filtering messages:', messages.length, 'selectedContractorId:', selectedContractorId, 'userId:', userId);
+    console.log('Available contractors:', contractors);
     
     // For debugging - log all messages
     messages.forEach(msg => {
@@ -278,18 +279,25 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
     // This ensures consistency with the database and other components
     
     // For homeowner view, process messages to show correct ownership and aliases
-    return messages.map(message => {
+    const processedMessages = messages.map(message => {
       // Find the contractor for this message to get their alias
       const contractor = contractors.find(c => c.id === message.senderId);
+      console.log('Found contractor for message:', message.id, contractor);
+      
+      // Determine if the message is from the current user (homeowner)
+      const isFromCurrentUser = message.senderId === userId;
       
       return {
         ...message,
-        // Force contractor messages to show as 'not own' (left side)
-        isOwn: message.senderId === userId,
+        // Set isOwn to true only if the message is from the current user (homeowner)
+        isOwn: isFromCurrentUser,
         // Use the contractor's alias from our loaded contractors list
         senderAlias: contractor?.alias || message.senderAlias || 'A'
       };
     });
+    
+    console.log('Processed messages:', processedMessages);
+    return processedMessages;
   };
   
   return (
@@ -380,7 +388,7 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
                   >
                     {!message.isOwn && (
                       <div className="flex items-center mb-1">
-                        <div className="w-6 h-6 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs mr-2">
+                        <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs mr-2">
                           {message.senderAlias || 'A'}
                         </div>
                         <span className="text-xs font-medium">

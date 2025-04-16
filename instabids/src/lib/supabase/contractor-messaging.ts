@@ -211,14 +211,52 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
       };
     });
     
-    // Insert aliases into the database
-    const { error: insertError } = await supabase
-      .from('contractor_aliases')
-      .insert(aliases);
-    
-    if (insertError) {
-      console.error('Error inserting aliases:', insertError);
-      return false;
+    // Check if any of these contractors already have aliases for this project
+    // This prevents duplicate key errors
+    if (uniqueContractorIds.length > 0) {
+      const { data: existingAliasesForContractors } = await supabase
+        .from('contractor_aliases')
+        .select('contractor_id')
+        .eq('project_id', projectId)
+        .in('contractor_id', uniqueContractorIds);
+      
+      // Filter out contractors that already have aliases
+      const contractorsWithoutAliases = uniqueContractorIds.filter(id => 
+        !existingAliasesForContractors?.some(a => a.contractor_id === id)
+      );
+      
+      console.log('Contractors without aliases:', contractorsWithoutAliases);
+      
+      // Only insert aliases for contractors that don't already have them
+      if (contractorsWithoutAliases.length > 0) {
+        const newAliases = contractorsWithoutAliases.map((contractorId, index) => {
+          // Find the position of this contractor in the original uniqueContractorIds array
+          const originalIndex = uniqueContractorIds.indexOf(contractorId);
+          const alias = String.fromCharCode(65 + originalIndex); // A, B, C, D, E, ...
+          
+          return {
+            project_id: projectId,
+            contractor_id: contractorId,
+            alias
+          };
+        });
+        
+        console.log('Inserting new aliases:', newAliases);
+        
+        try {
+          const { error: insertError } = await supabase
+            .from('contractor_aliases')
+            .insert(newAliases);
+          
+          if (insertError) {
+            console.error('Error inserting aliases:', insertError);
+            return false;
+          }
+        } catch (err) {
+          console.error('Exception when inserting aliases:', err);
+          return false;
+        }
+      }
     }
     
     console.log('Aliases assigned successfully:', aliases);
