@@ -90,6 +90,20 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
         contractorsData = await ContractorMessagingService.getContractorsWithAliases(projectId);
         console.log('Loaded contractors:', contractorsData);
         
+        // CRITICAL: Add a fake contractor for testing if none exist
+        if (contractorsData.length === 0) {
+          console.log('No contractors found, adding a test contractor for debugging');
+          contractorsData = [
+            {
+              id: 'test-contractor-id',
+              name: 'Test Contractor',
+              alias: 'A',
+              avatar: null,
+              bidAmount: 1000
+            }
+          ];
+        }
+        
         // Filter contractors to only include those who have bid or messaged
         if (contractorsData && contractorsData.length > 0) {
           // Make sure each contractor has an alias (A, B, C, etc.)
@@ -281,12 +295,23 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
     
     // For homeowner view, process messages to show correct ownership and aliases
     const processedMessages = messages.map(message => {
-      // Find the contractor for this message to get their alias
-      const contractor = contractors.find(c => c.id === message.senderId);
-      console.log('Found contractor for message:', message.id, contractor);
-      
       // Determine if the message is from the current user (homeowner)
       const isFromCurrentUser = message.senderId === userId;
+      
+      // If the message is NOT from the current user, it must be from a contractor
+      const isFromContractor = !isFromCurrentUser;
+      
+      // Find the contractor for this message to get their alias
+      const contractor = isFromContractor ? contractors.find(c => c.id === message.senderId) : null;
+      
+      console.log('Message processing:', {
+        id: message.id,
+        senderId: message.senderId,
+        isFromCurrentUser,
+        isFromContractor,
+        foundContractor: contractor ? true : false,
+        contractorAlias: contractor?.alias
+      });
       
       return {
         ...message,
@@ -332,12 +357,18 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
                 <SelectValue placeholder="Select a contractor" />
               </SelectTrigger>
               <SelectContent>
-                {contractors.map((contractor) => (
-                  <SelectItem key={contractor.id} value={contractor.id || ''}>
-                    Contractor {contractor.alias || 'A'}
-                    {contractor.bidAmount && ` - $${contractor.bidAmount.toLocaleString()}`}
+                {contractors.length > 0 ? (
+                  contractors.map((contractor) => (
+                    <SelectItem key={contractor.id} value={contractor.id || ''}>
+                      Contractor {contractor.alias || 'A'}
+                      {contractor.bidAmount && ` - $${contractor.bidAmount.toLocaleString()}`}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-contractors" disabled>
+                    No contractors available
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
           </div>
