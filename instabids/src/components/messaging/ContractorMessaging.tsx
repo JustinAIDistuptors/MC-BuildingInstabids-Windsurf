@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/types/supabase';
+import MessagingDiagnostic from './MessagingDiagnostic';
 
 export interface ContractorMessagingProps {
   projectId: string;
@@ -487,6 +488,11 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
             </Button>
           </div>
         </div>
+      </div>
+      
+      {/* Diagnostic Tool - For Development Only */}
+      <div className="mt-4">
+        <MessagingDiagnostic projectId={projectId} />
       </div>
     </div>
   );
