@@ -288,15 +288,36 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
     // First, get the project owner to exclude them from contractors list
     let projectOwnerId: string | null = null;
     try {
-      const { data: project, error: projectError } = await supabase
+      // Try multiple approaches to find the project owner
+      let { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('owner_id')
+        .select('*') // Select all columns to see what's available
         .eq('id', projectId)
         .single();
       
       if (!projectError && project) {
-        projectOwnerId = project.owner_id;
-        console.log('Project owner ID:', projectOwnerId);
+        // Check for any owner-related field
+        if (project.owner_id) {
+          projectOwnerId = project.owner_id;
+          console.log('Found project owner using owner_id:', projectOwnerId);
+        } else if (project.user_id) {
+          projectOwnerId = project.user_id;
+          console.log('Found project owner using user_id:', projectOwnerId);
+        } else {
+          // Look for any field that might contain the owner
+          const ownerFields = Object.keys(project).filter(key => 
+            key.includes('owner') || key.includes('user')
+          );
+          
+          if (ownerFields.length > 0) {
+            const ownerField = ownerFields[0];
+            // Use type assertion to avoid TypeScript error
+            projectOwnerId = project[ownerField as keyof typeof project];
+            console.log(`Found project owner using ${ownerField}:`, projectOwnerId);
+          } else {
+            console.log('No owner field found in project:', Object.keys(project));
+          }
+        }
       }
     } catch (err) {
       console.error('Error getting project owner:', err);
@@ -679,20 +700,41 @@ export async function getProjectMessages(projectId: string, contractorId?: strin
     // Get project owner ID to determine message ownership correctly
     let projectOwnerId: string | null = null;
     try {
-      const { data: project, error: projectError } = await supabase
+      // Try multiple approaches to find the project owner
+      // Approach 1: Try owner_id column
+      let { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('owner_id')
+        .select('*') // Select all columns to see what's available
         .eq('id', projectId)
         .single();
       
       if (!projectError && project) {
-        projectOwnerId = project.owner_id;
-        console.log('Project owner ID:', projectOwnerId);
+        // Check for any owner-related field
+        if (project.owner_id) {
+          projectOwnerId = project.owner_id;
+          console.log('Found project owner using owner_id:', projectOwnerId);
+        } else if (project.user_id) {
+          projectOwnerId = project.user_id;
+          console.log('Found project owner using user_id:', projectOwnerId);
+        } else {
+          // Look for any field that might contain the owner
+          const ownerFields = Object.keys(project).filter(key => 
+            key.includes('owner') || key.includes('user')
+          );
+          
+          if (ownerFields.length > 0) {
+            const ownerField = ownerFields[0];
+            // Use type assertion to avoid TypeScript error
+            projectOwnerId = project[ownerField as keyof typeof project];
+            console.log(`Found project owner using ${ownerField}:`, projectOwnerId);
+          } else {
+            console.log('No owner field found in project:', Object.keys(project));
+          }
+        }
       } else {
-        console.error('Error getting project owner or project not found:', projectError);
+        console.error('Error getting project or project not found:', projectError);
         
-        // Fallback: Try to determine project owner from the database structure
-        // This is a critical fix for when the projects table query fails
+        // Fallback: Try to determine project owner from messages
         const { data: messages, error: messagesError } = await supabase
           .from('messages')
           .select('sender_id, content')
