@@ -56,6 +56,7 @@ export interface FormattedMessage {
   id: string;
   senderId: string;
   senderAlias?: string | null;
+  contractor_alias?: string | null; // Added to match the database field
   content: string;
   timestamp: string;
   isOwn: boolean;
@@ -124,147 +125,112 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
   try {
     const supabase = getSupabaseClient();
     
-    // Check if we already have aliases assigned for this project
-    const { data: existingAliases } = await supabase
-      .from('contractor_aliases')
-      .select('*')
-      .eq('project_id', projectId);
-    
-    if (existingAliases && existingAliases.length > 0) {
-      console.log('Aliases already assigned for this project');
-      return true;
-    }
-    
-    // Get all contractors who have interacted with this project
-    const contractorInteractions: Array<{contractorId: string, timestamp: string}> = [];
-    
-    // 1. Get contractors from bids
-    try {
-      const { data: bids, error: bidsError } = await supabase
-        .from('bids')
-        .select('contractor_id, created_at')
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: true });
-      
-      if (!bidsError && bids && bids.length > 0) {
-        bids.forEach((bid: any) => {
-          contractorInteractions.push({
-            contractorId: bid.contractor_id,
-            timestamp: bid.created_at
-          });
-        });
-      }
-    } catch (err) {
-      console.error('Error getting bids:', err);
-      // Continue to try getting contractors from messages
-    }
-    
-    // 2. Get contractors from messages
-    try {
-      const { data: messages, error: messagesError } = await supabase
-        .from('messages')
-        .select('sender_id, created_at')
-        .eq('project_id', projectId)
-        .not('sender_id', 'is', null)
-        .order('created_at', { ascending: true });
-      
-      if (!messagesError && messages && messages.length > 0) {
-        messages.forEach((message: any) => {
-          contractorInteractions.push({
-            contractorId: message.sender_id,
-            timestamp: message.created_at
-          });
-        });
-      }
-    } catch (err) {
-      console.error('Error getting messages:', err);
-    }
-    
-    // No interactions found
-    if (contractorInteractions.length === 0) {
-      console.log('No contractor interactions found for this project');
+    // Get current user ID
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      console.error('No authenticated user found');
       return false;
     }
     
-    // Sort interactions by timestamp (earliest first)
-    contractorInteractions.sort((a, b) => {
-      return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-    });
+    const currentUserId = user.id;
     
-    // Get unique contractor IDs while preserving order (first interaction)
-    const uniqueContractorIds: string[] = [];
-    contractorInteractions.forEach(interaction => {
-      if (!uniqueContractorIds.includes(interaction.contractorId)) {
-        uniqueContractorIds.push(interaction.contractorId);
+    // Get all messages for this project
+    const { data: messages, error: messagesError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('project_id', projectId);
+    
+    if (messagesError) {
+      console.error('Error getting messages:', messagesError);
+      return false;
+    }
+    
+    if (!messages || messages.length === 0) {
+      console.log('No messages found for this project');
+      return true; // No messages, nothing to do
+    }
+    
+    // Group messages by sender_id to find contractors
+    const senderGroups = new Map<string, { count: number, firstMessage: any }>();
+    
+    // First pass: identify unique senders who are not the current user
+    messages.forEach((message: any) => {
+      // Skip messages from the current user
+      if (message.sender_id === currentUserId) return;
+      
+      if (!senderGroups.has(message.sender_id)) {
+        senderGroups.set(message.sender_id, { 
+          count: 1, 
+          firstMessage: message 
+        });
+      } else {
+        const group = senderGroups.get(message.sender_id)!;
+        group.count++;
       }
     });
     
-    console.log('Unique contractor IDs in order of first interaction:', uniqueContractorIds);
+    console.log(`Found ${senderGroups.size} unique senders in messages`);
     
-    // Generate aliases (A, B, C, D, E, etc.)
-    const aliases = uniqueContractorIds.map((contractorId, index) => {
-      const alias = String.fromCharCode(65 + index); // A, B, C, D, E, ...
-      return {
-        project_id: projectId,
-        contractor_id: contractorId,
-        alias
-      };
-    });
-    
-    // Check if any of these contractors already have aliases for this project
-    // This prevents duplicate key errors
-    if (uniqueContractorIds.length > 0) {
-      const { data: existingAliasesForContractors } = await supabase
-        .from('contractor_aliases')
-        .select('contractor_id')
-        .eq('project_id', projectId)
-        .in('contractor_id', uniqueContractorIds);
-      
-      // Filter out contractors that already have aliases
-      const contractorsWithoutAliases = uniqueContractorIds.filter(id => 
-        !existingAliasesForContractors?.some(a => a.contractor_id === id)
-      );
-      
-      console.log('Contractors without aliases:', contractorsWithoutAliases);
-      
-      // Only insert aliases for contractors that don't already have them
-      if (contractorsWithoutAliases.length > 0) {
-        const newAliases = contractorsWithoutAliases.map((contractorId, index) => {
-          // Find the position of this contractor in the original uniqueContractorIds array
-          const originalIndex = uniqueContractorIds.indexOf(contractorId);
-          const alias = String.fromCharCode(65 + originalIndex); // A, B, C, D, E, ...
+    // Assign aliases to contractors (real sender IDs, not virtual IDs)
+    let aliasCounter = 1;
+    for (const [senderId, group] of senderGroups.entries()) {
+      try {
+        // Skip if sender ID is not a valid UUID
+        if (!isValidUUID(senderId)) {
+          console.warn(`Skipping invalid UUID: ${senderId}`);
+          continue;
+        }
+        
+        // Check if this contractor already has an alias
+        const { data: existingAlias } = await supabase
+          .from('contractor_aliases')
+          .select('*')
+          .eq('project_id', projectId)
+          .eq('contractor_id', senderId)
+          .maybeSingle();
+        
+        if (!existingAlias) {
+          // Try to extract alias from message content
+          let alias = String(aliasCounter++);
+          const contractorMatch = group.firstMessage.content.match(/^Contractor\s+(\d+|[A-Z])/i);
+          if (contractorMatch) {
+            alias = contractorMatch[1];
+          }
           
-          return {
-            project_id: projectId,
-            contractor_id: contractorId,
-            alias
-          };
-        });
-        
-        console.log('Inserting new aliases:', newAliases);
-        
-        try {
+          // Insert new alias with the real sender ID (not virtual)
           const { error: insertError } = await supabase
             .from('contractor_aliases')
-            .insert(newAliases);
+            .insert({
+              project_id: projectId,
+              contractor_id: senderId, // Use the real sender ID
+              alias: alias
+            });
           
           if (insertError) {
-            console.error('Error inserting aliases:', insertError);
-            return false;
+            console.error(`Error inserting alias for ${senderId}:`, insertError);
           }
-        } catch (err) {
-          console.error('Exception when inserting aliases:', err);
-          return false;
         }
+      } catch (err) {
+        // Log the error but continue with other aliases
+        console.error(`Error processing alias for ${senderId}:`, err);
       }
     }
     
-    console.log('Aliases assigned successfully:', aliases);
     return true;
-  } catch (error) {
-    console.error('Error assigning aliases:', error);
+  } catch (err) {
+    console.error('Error assigning contractor aliases:', err);
     return false;
   }
+}
+
+/**
+ * Helper to validate UUID format
+ * @param str String to validate as UUID
+ * @returns True if string is a valid UUID, false otherwise
+ */
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
 }
 
 /**
@@ -306,6 +272,23 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
     const supabase = getSupabaseClient();
     const result: ContractorWithAlias[] = [];
     
+    // First, get the project owner to exclude them from contractors list
+    let projectOwnerId: string | null = null;
+    try {
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('user_id')
+        .eq('id', projectId)
+        .single();
+      
+      if (!projectError && project) {
+        projectOwnerId = project.user_id;
+        console.log('Project owner ID:', projectOwnerId);
+      }
+    } catch (err) {
+      console.error('Error getting project owner:', err);
+    }
+    
     // First try to get contractors from messages
     try {
       // Get unique sender IDs from messages for this project
@@ -316,8 +299,11 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
         .not('sender_id', 'is', null);
       
       if (!messagesError && messages && messages.length > 0) {
-        // Get unique sender IDs
-        const senderIds = [...new Set(messages.map(m => m.sender_id))];
+        // Get unique sender IDs, excluding the project owner
+        const senderIds = [...new Set(messages.map(m => m.sender_id))]
+          .filter(id => id !== projectOwnerId); // Exclude the project owner
+        
+        console.log('Sender IDs from messages (excluding owner):', senderIds);
         
         // Get contractor profiles for these IDs
         if (senderIds.length > 0) {
@@ -332,6 +318,8 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
               .from('contractor_aliases')
               .select('contractor_id, alias')
               .eq('project_id', projectId);
+            
+            console.log('Found aliases for contractors:', aliases);
             
             // Add contractors from messages to the result
             contractors.forEach(contractor => {
@@ -371,6 +359,8 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
         .eq('project_id', projectId);
       
       if (!bidsError && bids && bids.length > 0) {
+        console.log('Found bids for project:', bids.length);
+        
         // Get aliases for all contractors
         const { data: aliases } = await supabase
           .from('contractor_aliases')
@@ -383,6 +373,9 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
           
           // Skip if contractor is null or undefined
           if (!contractor) return;
+          
+          // Skip if this contractor is the project owner
+          if (contractor.id === projectOwnerId) return;
           
           // Skip if this contractor is already in the result
           if (result.some(c => c.id === contractor.id)) return;
@@ -653,23 +646,41 @@ export async function sendGroupMessage(
 
 /**
  * Get messages for a project
- * @param projectId - The project ID
- * @param contractorId - Optional contractor ID for filtering individual messages
- * @returns Array of formatted messages
+ * @param projectId The project ID
+ * @param contractorId Optional contractor ID to filter messages
+ * @returns Promise resolving to an array of formatted messages
  */
-export async function getProjectMessages(
-  projectId: string,
-  contractorId?: string
-): Promise<FormattedMessage[]> {
+export async function getProjectMessages(projectId: string, contractorId?: string): Promise<FormattedMessage[]> {
   try {
     const supabase = getSupabaseClient();
     
-    // Get the current user ID (or fallback for development)
-    const userId = await getUserId();
+    // Get current user ID
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      throw new Error('User not authenticated');
+    }
     
-    console.log('Getting messages for project:', projectId, 'and user:', userId);
+    const userId = user.id;
+    console.log('Current user ID:', userId);
     
-    // Step 1: Get all messages for this project
+    // Get project owner ID to determine message ownership correctly
+    let projectOwnerId: string | null = null;
+    try {
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('user_id')
+        .eq('id', projectId)
+        .single();
+      
+      if (!projectError && project) {
+        projectOwnerId = project.user_id;
+        console.log('Project owner ID:', projectOwnerId);
+      }
+    } catch (err) {
+      console.error('Error getting project owner:', err);
+    }
+    
+    // Get all messages for this project
     const { data: messages, error: messagesError } = await supabase
       .from('messages')
       .select(`
@@ -680,14 +691,7 @@ export async function getProjectMessages(
         message_type,
         contractor_alias,
         created_at,
-        message_attachments (
-          id,
-          file_name,
-          file_size,
-          file_type,
-          file_url,
-          created_at
-        )
+        message_attachments (id, file_name, file_size, file_type, file_url, created_at)
       `)
       .eq('project_id', projectId)
       .order('created_at', { ascending: true });
@@ -698,26 +702,12 @@ export async function getProjectMessages(
     }
     
     if (!messages || messages.length === 0) {
-      console.log('No messages found for project:', projectId);
       return [];
     }
     
-    console.log(`Found ${messages.length} messages for project:`, projectId);
+    console.log('Raw messages from database:', messages);
     
-    // Step 2: Get all message IDs
-    const messageIds = messages.map(m => m.id);
-    
-    // Step 3: Get recipients for these messages
-    const { data: recipients, error: recipientsError } = await supabase
-      .from('message_recipients')
-      .select('message_id, recipient_id')
-      .in('message_id', messageIds);
-    
-    if (recipientsError) {
-      console.error('Error getting message recipients:', recipientsError);
-    }
-    
-    // Step 4: Get contractor aliases
+    // Get aliases for contractors
     const { data: aliases, error: aliasesError } = await supabase
       .from('contractor_aliases')
       .select('contractor_id, alias')
@@ -727,18 +717,33 @@ export async function getProjectMessages(
       console.error('Error getting contractor aliases:', aliasesError);
     }
     
-    // Step 5: Format messages
-    const formattedMessages: FormattedMessage[] = messages.map(message => {
-      // Get recipients for this message
-      const messageRecipients = recipients?.filter(r => r.message_id === message.id) || [];
+    // Determine if current user is the project owner
+    const isUserProjectOwner = userId === projectOwnerId;
+    console.log('Is user the project owner?', isUserProjectOwner);
+    
+    // Format messages
+    const formattedMessages: FormattedMessage[] = messages.map((message: any) => {
+      // For homeowners: messages they sent are their own
+      // For contractors: messages they sent are their own
+      const isOwn = message.sender_id === userId;
       
-      // For contractors, show all messages in the project
-      // This ensures the full conversation thread is visible
-      // and avoids client-side exceptions from complex filtering
+      // Determine if message is from a contractor (anyone who isn't the project owner)
+      const isFromContractor = message.sender_id !== projectOwnerId;
       
-      // Get sender alias if it's a contractor
-      const senderAlias = message.contractor_alias || 
-        aliases?.find(a => a.contractor_id === message.sender_id)?.alias || null;
+      // Get alias for the sender if they are a contractor
+      const senderAlias = isFromContractor 
+        ? aliases?.find((a: any) => a.contractor_id === message.sender_id)?.alias || null
+        : null;
+      
+      console.log(`Message ${message.id} ownership:`, {
+        content: message.content,
+        senderId: message.sender_id,
+        userId,
+        projectOwnerId,
+        isOwn,
+        isFromContractor,
+        senderAlias
+      });
       
       // Format attachments
       const formattedAttachments = message.message_attachments?.map((attachment: any) => ({
@@ -753,13 +758,22 @@ export async function getProjectMessages(
         id: message.id,
         senderId: message.sender_id,
         senderAlias,
-        content: message.content,
+        content: message.content || '',
         timestamp: message.created_at,
-        isOwn: message.sender_id === userId,
+        isOwn,
         isGroup: message.message_type === 'group',
         attachments: formattedAttachments
       };
-    }).filter(Boolean) as FormattedMessage[];
+    });
+    
+    console.log('Formatted messages:', formattedMessages);
+    
+    // Filter messages by contractor if specified
+    if (contractorId) {
+      return formattedMessages.filter(message => 
+        message.senderId === contractorId || message.senderId === userId
+      );
+    }
     
     return formattedMessages;
   } catch (error) {
