@@ -120,7 +120,6 @@ export interface Database {
         Row: {
           id: string
           sender_id: string
-          recipient_id: string | null
           content: string
           created_at: string
           project_id: string
@@ -130,7 +129,6 @@ export interface Database {
         Insert: {
           id?: string
           sender_id: string
-          recipient_id?: string | null
           content: string
           created_at?: string
           project_id: string
@@ -140,7 +138,6 @@ export interface Database {
         Update: {
           id?: string
           sender_id?: string
-          recipient_id?: string | null
           content?: string
           created_at?: string
           project_id?: string

@@ -1,0 +1,11 @@
+/ui create a contractor messaging component with the following features:
+- Support for both individual and group messaging
+- Contractor aliases (A, B, C) for anonymity
+- Real-time message updates
+- Error handling with proper user feedback
+- Clean separation between UI and backend
+- Compatible with Next.js 15 and React 19
+- Uses Tailwind CSS for styling
+- No external icon libraries (use text/emoji instead)
+- TypeScript support with proper interfaces
+- Ability to toggle between individual and group messaging

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ContractorMessagingService, FormattedMessage, ContractorWithAlias } from '@/services/ContractorMessagingService';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { Database } from '@/types/supabase';
 import MessagingDiagnostic from './MessagingDiagnostic';
+import { isContractorMessage, processMessages, filterMessagesForContractor, createContractorOptions } from '@/lib/contractor-messaging-helpers';
 
 export interface ContractorMessagingProps {
   projectId: string;
@@ -69,55 +70,98 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
     }
   };
   
+  // We're now using the imported isContractorMessage function from our helper file
+  
+  // Create dropdown options for contractors
+  const contractorOptions = useMemo(() => {
+    if (!messages || messages.length === 0) {
+      return [];
+    }
+    
+    // Get unique contractors from the messages
+    const uniqueContractors = new Map();
+    
+    messages.forEach(message => {
+      // Use our isContractorMessage function for consistency
+      if (!message.isOwn) {
+        // Use a default alias "1" if no senderAlias is available
+        const alias = message.senderAlias || "1";
+        uniqueContractors.set(message.contractorId, {
+          id: message.contractorId,
+          label: `Contractor ${alias}`
+        });
+      }
+    });
+    
+    // Always ensure we have at least one contractor option for testing
+    if (uniqueContractors.size === 0 && messages.length > 0) {
+      // Find any message that might be from a contractor based on content
+      const contractorMessage = messages.find(msg => 
+        isContractorMessage(msg)
+      );
+      
+      if (contractorMessage) {
+        uniqueContractors.set(contractorMessage.contractorId, {
+          id: contractorMessage.contractorId,
+          label: 'Contractor 1'
+        });
+      }
+    }
+    
+    return Array.from(uniqueContractors.values());
+  }, [messages]);
+  
+  // Create a mapping of sender IDs to contractor labels
+  const senderLabelMap = useMemo(() => {
+    const labelMap = new Map<string, string>();
+    
+    // Initialize with contractor aliases from messages
+    messages.forEach(message => {
+      if (message.contractor_alias && !message.isOwn) {
+        labelMap.set(message.senderId, message.contractor_alias);
+      }
+    });
+    
+    return labelMap;
+  }, [messages]);
+  
+  // Process messages to identify contractor messages at the component level
+  const processedMessages = useMemo(() => {
+    return messages.map(message => {
+      // Determine if this is a contractor message
+      const isFromContractor = isContractorMessage(message);
+      
+      // Get the consistent label for this sender
+      const contractorLabel = isFromContractor ? senderLabelMap.get(message.senderId) || "1" : null;
+      
+      return {
+        ...message,
+        // Override isOwn based on our contractor detection
+        isOwn: !isFromContractor, // If it's a contractor message, it's not own
+        // Store the contractor ID for filtering
+        contractorId: message.senderId,
+        // Use the consistent contractor label for all messages from the same sender
+        senderAlias: contractorLabel || ''
+      };
+    });
+  }, [messages, senderLabelMap]);
+  
   // Load contractors for this project
   const loadContractors = async () => {
     try {
       console.log('Loading contractors for project:', projectId);
       
-      // CRITICAL FIX: Create contractors based on unique sender IDs that are not the current user
-      // This handles the case where messages from contractors have different sender IDs
+      // Use our helper function to create contractor options
+      const contractorOptions = createContractorOptions(messages);
       
-      // Extract unique contractor sender IDs from messages
-      const contractorMap = new Map();
-      
-      // First, identify all unique contractor sender IDs
-      const uniqueContractorIds = new Set();
-      messages.forEach(message => {
-        // A message is from a contractor if:
-        // 1. The sender ID is not the current user's ID AND
-        // 2. The isOwn flag is false (this is critical for correct identification)
-        const isFromContractor = message.senderId !== userId && message.isOwn === false;
-        
-        // Only add real contractor IDs to the set
-        if (isFromContractor) {
-          console.log('Found contractor message:', message.content, 'from:', message.senderId);
-          uniqueContractorIds.add(message.senderId);
-        }
-      });
-      
-      // For each unique contractor ID, create a contractor object with a unique sequential number
-      let contractorCounter = 1;
-      Array.from(uniqueContractorIds).forEach((contractorId: unknown) => {
-        const contractorNumber = String(contractorCounter++);
-        
-        // Find a message from this contractor to use as a reference
-        const contractorMessage = messages.find(m => m.senderId === contractorId && !m.isOwn);
-        
-        // Only create contractor entries for real contractors (not homeowners)
-        if (contractorMessage) {
-          console.log('Creating contractor entry for:', contractorId, 'with label:', contractorNumber);
-          contractorMap.set(contractorId, {
-            id: String(contractorId), // Use the actual sender ID as string
-            name: `Contractor ${contractorNumber}`, // Use a unique number for each contractor
-            alias: contractorNumber, // Use a unique number for each contractor
-            avatar: null,
-            bidAmount: 1000 // Set bid amount for all contractors
-          });
-        }
-      });
-      
-      // Convert to array
-      const realContractors = Array.from(contractorMap.values());
+      // Convert to the ContractorWithAlias format expected by the component
+      const realContractors = contractorOptions.map(option => ({
+        id: option.id,
+        name: option.label,
+        alias: option.label.replace('Contractor ', ''),
+        avatar: null,
+        bidAmount: 1000 // Set bid amount for all contractors
+      }));
       
       console.log('Found real contractors with consistent labels:', realContractors);
       
@@ -126,8 +170,11 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       
       // If we have contractors and no selected contractor, select the first one
       if (realContractors.length > 0 && !selectedContractorId) {
-        setSelectedContractorId(realContractors[0].id);
-        console.log('Auto-selected contractor:', realContractors[0].id);
+        const firstContractor = realContractors[0];
+        if (firstContractor && firstContractor.id) {
+          setSelectedContractorId(firstContractor.id);
+          console.log('Auto-selected contractor:', firstContractor.id);
+        }
       }
       
       // If no contractors are found, just set an empty array
@@ -309,82 +356,26 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
   const getFilteredMessages = () => {
     console.log('Filtering messages:', messages.length, 'selectedContractorId:', selectedContractorId);
     
-    // CRITICAL FIX: Based on the diagnostic data, messages from contractors have a different sender_id
-    // than the homeowner's user ID. We can use this to identify contractor messages.
-    
-    // First, create a consistent mapping of sender IDs to contractor labels
-    const senderLabelMap = new Map();
-    
-    // First pass: find all unique contractor sender IDs
-    let contractorCounter = 1;
-    messages.forEach(message => {
-      // A message is from a contractor if:
-      // 1. The sender ID is not the current user's ID AND
-      // 2. The isOwn flag is not true (this is important for new messages)
-      const isFromContractor = message.senderId !== userId && !message.isOwn;
-      
-      if (isFromContractor && !senderLabelMap.has(message.senderId)) {
-        // Assign sequential numbers to different contractors
-        // This ensures each contractor has a unique label
-        senderLabelMap.set(message.senderId, String(contractorCounter++));
-      }
-    });
-    
-    console.log('Sender to label mapping:', Object.fromEntries(senderLabelMap));
-    
-    // Process messages to identify contractor messages based on sender_id
-    const processedMessages = messages.map(message => {
-      // A message is from a contractor if:
-      // 1. The sender ID is not the current user's ID AND
-      // 2. The isOwn flag is not true (this is important for new messages)
-      const isFromContractor = message.senderId !== userId && !message.isOwn;
-      
-      // Get the consistent label for this sender
-      const contractorLabel = isFromContractor ? senderLabelMap.get(message.senderId) : null;
-      
-      // For debugging
-      console.log('Processing message:', {
-        id: message.id,
-        content: message.content,
-        senderId: message.senderId,
-        isFromContractor,
-        isOwn: message.isOwn,
-        contractorLabel
-      });
-      
-      return {
-        ...message,
-        // Keep the original isOwn flag if it exists, otherwise determine based on sender ID
-        isOwn: message.isOwn !== undefined ? message.isOwn : !isFromContractor,
-        // Store the contractor ID for filtering
-        contractorId: message.senderId,
-        // Use the consistent contractor label for all messages from the same sender
-        senderAlias: contractorLabel || ''
-      };
-    });
+    // Process messages to identify contractors
+    const processedMsgs = processMessages(messages);
     
     // Filter messages based on selected contractor
-    let filteredMessages = processedMessages;
-    
     if (selectedContractorId) {
       const selectedContractor = contractors.find(c => c.id === selectedContractorId);
       
       if (selectedContractor) {
         console.log(`Filtering messages for Contractor ${selectedContractor.alias} (ID: ${selectedContractor.id})`);
         
-        // IMPORTANT: Only show messages from the selected contractor and the homeowner
-        // This ensures each contractor has their own private messaging thread
-        filteredMessages = processedMessages.filter(msg => 
-          // Include messages from the selected contractor
-          msg.contractorId === selectedContractor.id ||
-          // Include messages from the homeowner (user)
-          msg.isOwn
-        );
+        // Use our helper function to filter messages for the selected contractor
+        const filtered = filterMessagesForContractor(processedMsgs, selectedContractor.id);
+        console.log('Filtered messages:', filtered.length);
+        return filtered;
       }
     }
     
-    console.log('Filtered messages:', filteredMessages.length);
-    return filteredMessages;
+    // If no contractor is selected, return all processed messages
+    console.log('No contractor selected, returning all messages:', processedMsgs.length);
+    return processedMsgs;
   };
   
   return (
@@ -505,9 +496,9 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
                       <div 
                         className={`rounded-lg py-2 px-3 ${message.isOwn ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'}`}
                       >
-                        {/* Display message content - for contractor messages, remove any prefix */}
+                        {/* Display message content - for contractor messages, only remove Contractor prefix */}
                         {!message.isOwn ? 
-                          message.content.replace(/^(Contractor\s+\d+|[A-Za-z]\s*|C\s*\d+)\s*/i, '') : 
+                          message.content.replace(/^(Contractor\s+\d+|C\s*\d+)\s*/i, '') : 
                           message.content
                         }
                       </div>

@@ -246,6 +246,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
             <TabsList className="mb-4">
               <TabsTrigger value="details">Details</TabsTrigger>
               <TabsTrigger value="photos">Photos</TabsTrigger>
+              <TabsTrigger value="messages">Messages</TabsTrigger>
               {project.timeline_horizon && (
                 <TabsTrigger value="timeline">Timeline</TabsTrigger>
               )}
@@ -327,6 +328,20 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               </Card>
             </TabsContent>
             
+            <TabsContent value="messages" className="mt-0">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Messages</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ContractorBidMessaging 
+                    projectId={project.id} 
+                    projectTitle={project.title} 
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {project.timeline_horizon && (
               <TabsContent value="timeline" className="mt-0">
                 <Card>
@@ -334,19 +349,30 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                     <CardTitle>Project Timeline</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div>
-                        <h3 className="font-medium mb-2">Timeline Horizon</h3>
-                        <p className="text-gray-700">{project.timeline_horizon}</p>
-                      </div>
-                      
-                      {project.created_at && (
+                    {project.timeline_horizon ? (
+                      <div className="space-y-4">
                         <div>
-                          <h3 className="font-medium mb-2">Posted On</h3>
-                          <p className="text-gray-700">{new Date(project.created_at).toLocaleDateString()}</p>
+                          <h3 className="text-sm font-medium">Expected Start Date</h3>
+                          <p className="text-sm text-gray-500">
+                            {new Date(project.timeline_horizon.start_date).toLocaleDateString()}
+                          </p>
                         </div>
-                      )}
-                    </div>
+                        <div>
+                          <h3 className="text-sm font-medium">Expected End Date</h3>
+                          <p className="text-sm text-gray-500">
+                            {new Date(project.timeline_horizon.end_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-medium">Timeline Notes</h3>
+                          <p className="text-sm text-gray-500">
+                            {project.timeline_horizon.notes || "No additional notes provided."}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500">No timeline information available.</p>
+                    )}
                   </CardContent>
                 </Card>
               </TabsContent>
@@ -430,16 +456,7 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                 </div>
               </form>
               
-              {/* Add messaging functionality */}
-              {existingBid && (
-                <div className="mt-6">
-                  <h3 className="text-lg font-medium mb-3">Message Project Owner</h3>
-                  <ContractorBidMessaging 
-                    projectId={projectId} 
-                    projectTitle={project.title} 
-                  />
-                </div>
-              )}
+              {/* Messaging component moved to dedicated Messages tab */}
             </CardContent>
             <CardFooter className="flex flex-col items-start">
               <p className="text-sm text-gray-500">

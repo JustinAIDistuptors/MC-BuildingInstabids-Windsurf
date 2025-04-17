@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { ProjectService, Project } from "@/lib/supabase/project-service";
+import { supabase } from "@/lib/supabase/client";
 
 // Mock data for available projects
 const mockAvailableProjects = [
@@ -84,78 +86,21 @@ const mockActiveProjects = [
     location: "Miami Beach, FL",
     postedBy: "David L.",
     submittedBid: 14500,
-    submittedAt: "2025-04-01T09:30:00Z",
-    imageUrl: "/images/placeholder-project.jpg"
   }
 ];
 
-// Project card component for available projects
-const AvailableProjectCard = ({ project }: { project: typeof mockAvailableProjects[0] }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-300">
-    <div className="relative h-40 w-full bg-gray-200 dark:bg-gray-700">
-      <div className="h-full w-full flex items-center justify-center text-gray-400">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-          <polyline points="21 15 16 10 5 21"></polyline>
-        </svg>
-      </div>
-    </div>
-    <div className="p-4">
-      <div className="flex justify-between items-start">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{project.title}</h3>
-        <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{project.distance}</span>
-      </div>
-      <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-        {project.description}
-      </p>
-      <div className="mt-3 flex justify-between items-center">
-        <div className="text-sm font-medium text-gray-900 dark:text-white">
-          ${project.budget.min.toLocaleString()} - ${project.budget.max.toLocaleString()}
-        </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          {project.bidsCount} bid{project.bidsCount !== 1 ? 's' : ''}
-        </div>
-      </div>
-      <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
-        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-            <circle cx="12" cy="10" r="3"></circle>
-          </svg>
-          {project.location}
-        </div>
-        <Link href={`/dashboard/contractor/projects/${project.id}`} className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
-          View Details
-        </Link>
-      </div>
-    </div>
-  </div>
-);
+// Extended Project interface for UI-specific properties
+interface ProjectWithUIData extends Project {
+  bid_status?: 'pending' | 'awarded';
+  submitted_bid?: number;
+  due_date?: string | undefined;
+}
 
-// Project card component for active projects
-const ActiveProjectCard = ({ project }: { project: typeof mockActiveProjects[0] }) => {
-  const statusStyles = {
-    awarded: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
-  };
-  
-  const statusLabels = {
-    awarded: "Awarded",
-    pending: "Bid Submitted"
-  };
-  
-  const style = statusStyles[project.bidStatus as keyof typeof statusStyles];
-  const label = statusLabels[project.bidStatus as keyof typeof statusLabels];
-  
+// Project card component for available projects
+function AvailableProjectCard({ project }: { project: Project }) {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-300">
       <div className="relative h-40 w-full bg-gray-200 dark:bg-gray-700">
-        <div className="absolute top-3 left-3 z-10">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style}`}>
-            {label}
-          </span>
-        </div>
         <div className="h-full w-full flex items-center justify-center text-gray-400">
           <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -165,22 +110,100 @@ const ActiveProjectCard = ({ project }: { project: typeof mockActiveProjects[0] 
         </div>
       </div>
       <div className="p-4">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{project.title}</h3>
+        <div className="flex justify-between items-start">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">{project.title}</h3>
+          <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">{project.distance}</span>
+        </div>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+          {project.description}
+        </p>
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-sm font-medium text-gray-900 dark:text-white">
+            {project.budget_min && project.budget_max ? 
+              `$${project.budget_min.toLocaleString()} - $${project.budget_max.toLocaleString()}` : 
+              'Budget not specified'}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {project.bid_count || 0} bids
+          </div>
+        </div>
+        <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+              <circle cx="12" cy="10" r="3"></circle>
+            </svg>
+            {project.location || 'Location not specified'}
+          </div>
+          <Link href={`/projects/${project.id}`} className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
+            View Details
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Project card component for active projects
+function ActiveProjectCard({ project }: { project: ProjectWithUIData }) {
+  // Determine if project is awarded based on status
+  const bidStatus = project.status === "in_progress" ? "awarded" : "pending";
+  
+  const statusStyles = {
+    awarded: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+  };
+  
+  const statusLabels = {
+    awarded: "Project Awarded",
+    pending: "Bid Submitted"
+  };
+  
+  const style = statusStyles[bidStatus];
+  const label = statusLabels[bidStatus];
+  
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden hover:shadow-md transition-shadow duration-300">
+      <div className="relative h-40 w-full bg-gray-200 dark:bg-gray-700">
+        <div className="h-full w-full flex items-center justify-center text-gray-400">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+        </div>
+      </div>
+      <div className="p-4">
+        <div className="flex justify-between items-start">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">{project.title}</h3>
+          <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${style}`}>{label}</span>
+        </div>
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
           {project.description}
         </p>
         
-        {project.bidStatus === "pending" ? (
+        {bidStatus === "pending" ? (
           <div className="mt-3 flex items-center text-sm">
             <span className="font-medium text-gray-900 dark:text-white">Your bid:</span>
-            <span className="ml-2 text-gray-700 dark:text-gray-300">${project.submittedBid?.toLocaleString()}</span>
+            <span className="ml-2 text-gray-700 dark:text-gray-300">${project.submitted_bid?.toLocaleString() || 'N/A'}</span>
           </div>
         ) : (
           <div className="mt-3 flex items-center text-sm">
             <span className="font-medium text-gray-900 dark:text-white">Due date:</span>
-            <span className="ml-2 text-gray-700 dark:text-gray-300">{project.dueDate}</span>
+            <span className="ml-2 text-gray-700 dark:text-gray-300">{project.due_date || 'Not specified'}</span>
           </div>
         )}
+        
+        <div className="flex justify-between items-center mb-4">
+          <div className="text-sm font-medium text-gray-900 dark:text-white">
+            {project.budget_min && project.budget_max ? 
+              `$${project.budget_min.toLocaleString()} - $${project.budget_max.toLocaleString()}` : 
+              'Budget not specified'}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {project.status === "in_progress" ? "Awarded" : "Pending"}
+          </div>
+        </div>
         
         <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
@@ -188,19 +211,69 @@ const ActiveProjectCard = ({ project }: { project: typeof mockActiveProjects[0] 
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
               <circle cx="12" cy="10" r="3"></circle>
             </svg>
-            {project.location}
+            {project.location || 'Location not specified'}
           </div>
-          <Link href={`/dashboard/contractor/projects/${project.id}`} className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
-            {project.bidStatus === "awarded" ? "View Project" : "View Bid"}
+          <Link href={`/projects/${project.id}`} className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
+            {bidStatus === "awarded" ? "View Project" : "View Bid"}
           </Link>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default function ContractorDashboard() {
   const [activeTab, setActiveTab] = useState("available");
+  const [availableProjects, setAvailableProjects] = useState<Project[]>([]);
+  const [activeProjects, setActiveProjects] = useState<ProjectWithUIData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get the current user
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          setError("User not authenticated");
+          return;
+        }
+        
+        // Load available projects
+        const available = await ProjectService.getAvailableProjects();
+        setAvailableProjects(available);
+        
+        // Load active projects for this contractor
+        const active = await ProjectService.getActiveProjects(user.id);
+        
+        // Add UI-specific properties to active projects
+        const activeWithUIData = active.map(project => {
+          // Convert project to ProjectWithUIData
+          const projectWithUI: ProjectWithUIData = {
+            ...project,
+            bid_status: project.status === "in_progress" ? "awarded" : "pending",
+            submitted_bid: Math.floor(Math.random() * (project.budget_max || 10000)), // Mock bid amount
+            due_date: project.status === "in_progress" ? 
+              new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0] : undefined
+          };
+          return projectWithUI;
+        });
+        
+        setActiveProjects(activeWithUIData);
+      } catch (err: any) {
+        console.error("Error loading projects:", err);
+        setError(err.message || "Failed to load projects");
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadProjects();
+  }, []);
   
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -303,9 +376,31 @@ export default function ContractorDashboard() {
         
         {/* Project Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {activeTab === "available" ? (
-            mockAvailableProjects.length > 0 ? (
-              mockAvailableProjects.map(project => (
+          {loading ? (
+            // Loading state
+            <div className="col-span-full text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="mt-4 text-gray-600 dark:text-gray-400">Loading projects...</p>
+            </div>
+          ) : error ? (
+            // Error state
+            <div className="col-span-full text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">Error loading projects</h3>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{error}</p>
+              <div className="mt-6">
+                <button onClick={() => window.location.reload()} className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : activeTab === "available" ? (
+            availableProjects.length > 0 ? (
+              availableProjects.map(project => (
                 <AvailableProjectCard key={project.id} project={project} />
               ))
             ) : (
@@ -327,8 +422,8 @@ export default function ContractorDashboard() {
               </div>
             )
           ) : (
-            mockActiveProjects.length > 0 ? (
-              mockActiveProjects.map(project => (
+            activeProjects.length > 0 ? (
+              activeProjects.map(project => (
                 <ActiveProjectCard key={project.id} project={project} />
               ))
             ) : (

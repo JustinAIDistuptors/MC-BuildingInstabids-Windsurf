@@ -1,59 +1,74 @@
 /**
  * Client-side Supabase client
  * For use in Client Components with "use client" directive
+ * 
+ * Following Supabase best practices for InstaBids
  */
-import { createClient } from '@supabase/supabase-js';
-import { Database } from './database.types';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Database } from '@/types/supabase';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// Singleton pattern for the Supabase client to ensure consistent authentication state
+let _supabaseClient: ReturnType<typeof createClientComponentClient<Database>> | null = null;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase credentials. Please check your .env.local file.');
+/**
+ * Get the Supabase client instance
+ * This ensures we're always using the same client instance throughout the application
+ * which prevents authentication state inconsistencies
+ */
+export function getSupabaseClient() {
+  if (typeof window === 'undefined') {
+    // Server-side - create a new instance each time
+    return createClientComponentClient<Database>();
+  }
+  
+  // Client-side - use singleton pattern
+  if (!_supabaseClient) {
+    _supabaseClient = createClientComponentClient<Database>();
+  }
+  
+  return _supabaseClient;
 }
 
-// Flag to indicate if we're using development fallbacks
-export const isUsingDevFallback = process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_DEV_FALLBACKS === 'true';
+// Export the client for backward compatibility
+export const supabase = typeof window !== 'undefined' ? getSupabaseClient() : null;
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    storageKey: 'instabids-auth-token',
-    autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
-});
-
-// Helper function to check and fix authentication
-export async function ensureAuthentication() {
+/**
+ * Helper function to check authentication status
+ * @returns Promise resolving to true if authenticated, false otherwise
+ */
+export async function ensureAuthentication(): Promise<boolean> {
   try {
-    // Check if we have a session
-    const { data: { session } } = await supabase.auth.getSession();
+    const client = getSupabaseClient();
+    if (!client) return false;
     
-    // If no session, try to sign in anonymously
-    if (!session) {
-      console.log('No session found, attempting anonymous sign-in');
-      const { data, error } = await supabase.auth.signInAnonymously();
-      
-      if (error) {
-        console.error('Anonymous sign-in failed:', error);
-        return false;
-      }
-      
-      console.log('Anonymous sign-in successful');
+    // Check if we have a session
+    const { data: { session } } = await client.auth.getSession();
+    
+    if (session) {
       return true;
     }
     
-    return true;
+    // Not authenticated
+    return false;
   } catch (error) {
     console.error('Authentication check failed:', error);
     return false;
   }
 }
 
-// Initialize authentication on load
-if (typeof window !== 'undefined') {
-  ensureAuthentication().catch(error => {
-    console.error('Failed to initialize authentication:', error);
-  });
+/**
+ * Get the current user ID
+ * @returns Promise resolving to user ID if authenticated, null otherwise
+ */
+export async function getCurrentUserId(): Promise<string | null> {
+  try {
+    const client = getSupabaseClient();
+    if (!client) return null;
+    
+    const { data } = await client.auth.getUser();
+    return data?.user?.id || null;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
 }

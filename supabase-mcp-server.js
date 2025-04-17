@@ -40,9 +40,81 @@ app.get('/', (req, res) => {
       '/insert',
       '/update',
       '/delete',
-      '/rpc/:functionName'
+      '/rpc/:functionName',
+      '/execute-sql' // Added new endpoint
     ]
   });
+});
+
+// NEW ENDPOINT: Execute raw SQL
+app.post('/execute-sql', async (req, res) => {
+  try {
+    const { sql } = req.body;
+    
+    if (!sql) {
+      return res.status(400).json({ error: 'SQL query is required' });
+    }
+    
+    console.log(`Executing SQL: ${sql}`);
+    
+    // Execute the SQL query
+    const { data, error } = await supabase.rpc('execute_sql', { query: sql });
+    
+    if (error) {
+      console.error('Error executing SQL with RPC:', error);
+      
+      // Try direct query if RPC fails
+      try {
+        // This is a workaround since Supabase JS client doesn't support raw SQL directly
+        // We'll use a simple query and then log that it's not actually executing the SQL
+        console.log('Warning: Direct SQL execution not supported by Supabase JS client');
+        console.log('Please create an RPC function named execute_sql in your Supabase instance');
+        console.log('Example SQL function: CREATE OR REPLACE FUNCTION execute_sql(query text) RETURNS JSONB AS $$ BEGIN RETURN (SELECT jsonb_agg(row_to_json(t)) FROM (SELECT * FROM dblink(\'dbname=postgres\', query) AS t) t); EXCEPTION WHEN OTHERS THEN RETURN jsonb_build_object(\'error\', SQLERRM); END; $$ LANGUAGE plpgsql SECURITY DEFINER;');
+        
+        return res.status(500).json({ 
+          error: 'SQL execution failed. Please create an RPC function named execute_sql.',
+          originalError: error.message,
+          sqlAttempted: sql
+        });
+      } catch (directError) {
+        console.error('Error with direct SQL execution:', directError);
+        return res.status(500).json({ error: directError.message });
+      }
+    }
+    
+    console.log('SQL executed successfully');
+    res.json({ data });
+  } catch (error) {
+    console.error('Error executing SQL:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Also support SQL execution via GET for simple queries
+app.get('/execute-sql', async (req, res) => {
+  try {
+    const { sql } = req.query;
+    
+    if (!sql) {
+      return res.status(400).json({ error: 'SQL query parameter is required' });
+    }
+    
+    console.log(`Executing SQL (GET): ${sql}`);
+    
+    // Execute the SQL query
+    const { data, error } = await supabase.rpc('execute_sql', { query: sql });
+    
+    if (error) {
+      console.error('Error executing SQL with RPC:', error);
+      return res.status(500).json({ error: error.message });
+    }
+    
+    console.log('SQL executed successfully');
+    res.json({ data });
+  } catch (error) {
+    console.error('Error executing SQL:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // List all tables
@@ -58,19 +130,21 @@ app.get('/tables', async (req, res) => {
       
       // Try to query using the REST API
       const response = await fetch(`${SUPABASE_URL}/rest/v1/?apikey=${SUPABASE_SERVICE_ROLE_KEY}`);
-      if (!response.ok) {
-        throw new Error(`Failed to get tables: ${response.statusText}`);
-      }
-      
       const tables = await response.json();
-      console.log(`Found ${tables.length} tables via REST API`);
-      return res.json({ tables: tables.map(t => t.name) });
+      
+      if (Array.isArray(tables)) {
+        console.log(`Retrieved ${tables.length} tables`);
+        return res.json({ tables });
+      } else {
+        console.error('Error getting tables via REST API');
+        return res.status(500).json({ error: 'Failed to retrieve tables' });
+      }
     }
     
-    console.log(`Found ${data.length} tables via RPC`);
+    console.log(`Retrieved ${data.length} tables`);
     res.json({ tables: data });
   } catch (error) {
-    console.error('Error listing tables:', error);
+    console.error('Error getting tables:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -80,23 +154,23 @@ app.get('/table/:tableName', async (req, res) => {
   try {
     const { tableName } = req.params;
     
-    // Create a describe_table function call
-    const { data, error } = await supabase.rpc('describe_table', { 
-      table_name: tableName 
-    });
+    console.log(`Getting structure for table '${tableName}'`);
+    
+    // Try to get table structure via RPC
+    const { data, error } = await supabase.rpc('get_table_structure', { table_name: tableName });
     
     if (error) {
-      console.error(`Error getting structure for table ${tableName}:`, error);
+      console.error('Error using RPC function, trying direct query:', error);
       
-      // Try to get table structure using a direct query to the table
+      // Try to get a sample of data to infer structure
       try {
-        // Query a single row to get column names
         const { data: sampleData, error: sampleError } = await supabase
           .from(tableName)
           .select('*')
           .limit(1);
           
         if (sampleError) {
+          console.error(`Error getting sample data for table ${tableName}:`, sampleError);
           return res.status(500).json({ error: sampleError.message });
         }
         
@@ -337,6 +411,33 @@ app.post('/rpc/:functionName', async (req, res) => {
     res.json({ data });
   } catch (error) {
     console.error('Error calling RPC function:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Check if table exists
+app.get('/table-exists/:tableName', async (req, res) => {
+  try {
+    const { tableName } = req.params;
+    
+    console.log(`Checking if table '${tableName}' exists`);
+    
+    // Try to get a single row from the table
+    const { data, error } = await supabase
+      .from(tableName)
+      .select('*')
+      .limit(1);
+    
+    if (error) {
+      // If there's an error, the table might not exist
+      console.log(`Table '${tableName}' does not exist or is not accessible`);
+      return res.json({ exists: false, error: error.message });
+    }
+    
+    console.log(`Table '${tableName}' exists`);
+    res.json({ exists: true });
+  } catch (error) {
+    console.error('Error checking if table exists:', error);
     res.status(500).json({ error: error.message });
   }
 });

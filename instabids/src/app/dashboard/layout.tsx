@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { getCurrentUser, signOutUser } from '@/lib/auth/auth-utils';
+import { signOutUser } from '@/lib/auth/auth-utils';
 import type { UserType } from '@/lib/auth/types';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase/client';
 
 // Define user interface with proper typing
 interface UserProfile {
@@ -54,23 +55,36 @@ export default function DashboardLayout({
         setLoading(true);
         setAuthError(null);
         
-        // For development, provide a default user to bypass auth
-        const devUser = {
-          id: 'dev-user-id',
-          email: 'dev@example.com',
-          user_metadata: {
-            full_name: 'Developer User',
-            user_type: 'homeowner' as UserType
-          }
-        };
+        // Get the current user directly from Supabase
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        // Set the development user
-        setUser(devUser);
+        if (sessionError || !session?.user) {
+          console.error("Authentication error:", sessionError);
+          setAuthError("You must be logged in to access this page");
+          router.push('/login');
+          return;
+        }
+        
+        const user = session.user;
+        const userType = user.user_metadata?.user_type as UserType;
+        
+        // Set the user and profile from user metadata
+        setUser(user);
         setProfile({
-          id: devUser.id,
-          full_name: devUser.user_metadata?.full_name,
-          user_type: devUser.user_metadata?.user_type
+          id: user.id,
+          full_name: user.user_metadata?.full_name,
+          user_type: userType
         });
+        
+        // Check if user is accessing the correct dashboard based on their user type
+        const currentPath = pathname?.split('/')?.[2]; // e.g., 'homeowner' from '/dashboard/homeowner'
+        
+        if (userType && currentPath && userType !== currentPath) {
+          // Redirect to the correct dashboard based on user type
+          console.log(`Redirecting ${userType} user from ${currentPath} dashboard to ${userType} dashboard`);
+          router.replace(`/dashboard/${userType}`);
+          return;
+        }
         
         setLoading(false);
         
