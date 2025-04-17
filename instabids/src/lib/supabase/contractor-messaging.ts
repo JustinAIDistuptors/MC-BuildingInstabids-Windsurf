@@ -290,12 +290,12 @@ export async function getContractorsWithAliases(projectId: string): Promise<Cont
     try {
       const { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('user_id')
+        .select('owner_id')
         .eq('id', projectId)
         .single();
       
       if (!projectError && project) {
-        projectOwnerId = project.user_id;
+        projectOwnerId = project.owner_id;
         console.log('Project owner ID:', projectOwnerId);
       }
     } catch (err) {
@@ -681,12 +681,12 @@ export async function getProjectMessages(projectId: string, contractorId?: strin
     try {
       const { data: project, error: projectError } = await supabase
         .from('projects')
-        .select('user_id')
+        .select('owner_id')
         .eq('id', projectId)
         .single();
       
       if (!projectError && project) {
-        projectOwnerId = project.user_id;
+        projectOwnerId = project.owner_id;
         console.log('Project owner ID:', projectOwnerId);
       } else {
         console.error('Error getting project owner or project not found:', projectError);
