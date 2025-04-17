@@ -171,8 +171,35 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
     
     console.log(`Found ${senderGroups.size} unique senders in messages`);
     
+    // Helper function to validate UUID format
+    const isValidUUID = (str: string): boolean => {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(str);
+    };
+    
     // Assign aliases to contractors (real sender IDs, not virtual IDs)
     let aliasCounter = 1;
+    
+    // First, get all existing aliases for this project to continue the sequence
+    const { data: existingAliases, error: aliasError } = await supabase
+      .from('contractor_aliases')
+      .select('*')
+      .eq('project_id', projectId);
+      
+    if (aliasError) {
+      console.error('Error getting existing aliases:', aliasError);
+    } else if (existingAliases && existingAliases.length > 0) {
+      // Find the highest existing alias number and start from there
+      const highestAlias = existingAliases.reduce((highest, current) => {
+        const aliasNum = parseInt(current.alias);
+        return isNaN(aliasNum) ? highest : Math.max(highest, aliasNum);
+      }, 0);
+      
+      aliasCounter = highestAlias + 1;
+      console.log(`Starting alias counter from ${aliasCounter} based on existing aliases`);
+    }
+    
+    // Now assign aliases to contractors who don't have one yet
     for (const [senderId, group] of senderGroups.entries()) {
       try {
         // Skip if sender ID is not a valid UUID
@@ -190,12 +217,8 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
           .maybeSingle();
         
         if (!existingAlias) {
-          // Try to extract alias from message content
-          let alias = String(aliasCounter++);
-          const contractorMatch = group.firstMessage.content.match(/^Contractor\s+(\d+|[A-Z])/i);
-          if (contractorMatch) {
-            alias = contractorMatch[1];
-          }
+          // Assign a unique sequential number to this contractor
+          const alias = String(aliasCounter++);
           
           // Insert new alias with the real sender ID (not virtual)
           const { error: insertError } = await supabase
@@ -221,16 +244,6 @@ export async function assignContractorAliases(projectId: string): Promise<boolea
     console.error('Error assigning contractor aliases:', err);
     return false;
   }
-}
-
-/**
- * Helper to validate UUID format
- * @param str String to validate as UUID
- * @returns True if string is a valid UUID, false otherwise
- */
-function isValidUUID(str: string): boolean {
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-  return uuidRegex.test(str);
 }
 
 /**

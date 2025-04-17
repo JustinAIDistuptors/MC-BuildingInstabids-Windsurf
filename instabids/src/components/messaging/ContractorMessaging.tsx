@@ -89,12 +89,14 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
         }
       });
       
-      // For each unique contractor ID, create a contractor object with consistent label
+      // For each unique contractor ID, create a contractor object with a unique sequential number
+      let contractorCounter = 1;
       Array.from(uniqueContractorIds).forEach((contractorId: unknown) => {
+        const contractorNumber = String(contractorCounter++);
         contractorMap.set(contractorId, {
           id: String(contractorId), // Use the actual sender ID as string
-          name: "Contractor 1", // Always use Contractor 1 for consistency
-          alias: "1", // Always use 1 as the alias
+          name: `Contractor ${contractorNumber}`, // Use a unique number for each contractor
+          alias: contractorNumber, // Use a unique number for each contractor
           avatar: null,
           bidAmount: 1000 // Set bid amount for all contractors
         });
@@ -300,6 +302,7 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
     const senderLabelMap = new Map();
     
     // First pass: find all unique contractor sender IDs
+    let contractorCounter = 1;
     messages.forEach(message => {
       // A message is from a contractor if:
       // 1. The sender ID is not the current user's ID AND
@@ -307,9 +310,9 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       const isFromContractor = message.senderId !== userId && !message.isOwn;
       
       if (isFromContractor && !senderLabelMap.has(message.senderId)) {
-        // Always use "1" as the label for all contractors in this simplified version
-        // This ensures all messages from the same contractor have the same label
-        senderLabelMap.set(message.senderId, "1");
+        // Assign sequential numbers to different contractors
+        // This ensures each contractor has a unique label
+        senderLabelMap.set(message.senderId, String(contractorCounter++));
       }
     });
     
@@ -342,7 +345,7 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
         // Store the contractor ID for filtering
         contractorId: message.senderId,
         // Use the consistent contractor label for all messages from the same sender
-        senderAlias: contractorLabel || 'A'
+        senderAlias: contractorLabel || ''
       };
     });
     
@@ -353,13 +356,14 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       const selectedContractor = contractors.find(c => c.id === selectedContractorId);
       
       if (selectedContractor) {
-        console.log('Filtering by contractor:', selectedContractor.id);
+        console.log(`Filtering messages for Contractor ${selectedContractor.alias} (ID: ${selectedContractor.id})`);
         
-        // Show messages from the selected contractor and replies to them
+        // IMPORTANT: Only show messages from the selected contractor and the homeowner
+        // This ensures each contractor has their own private messaging thread
         filteredMessages = processedMessages.filter(msg => 
-          // Include all messages from the selected contractor
+          // Include messages from the selected contractor
           msg.contractorId === selectedContractor.id ||
-          // Include all messages from the homeowner (user)
+          // Include messages from the homeowner (user)
           msg.isOwn
         );
       }
