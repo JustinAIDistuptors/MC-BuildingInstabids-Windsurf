@@ -688,9 +688,29 @@ export async function getProjectMessages(projectId: string, contractorId?: strin
       if (!projectError && project) {
         projectOwnerId = project.user_id;
         console.log('Project owner ID:', projectOwnerId);
+      } else {
+        console.error('Error getting project owner or project not found:', projectError);
+        
+        // Fallback: Try to determine project owner from the database structure
+        // This is a critical fix for when the projects table query fails
+        const { data: messages, error: messagesError } = await supabase
+          .from('messages')
+          .select('sender_id, content')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: true })
+          .limit(10);
+          
+        if (!messagesError && messages && messages.length > 0) {
+          // Analyze message patterns to guess the project owner
+          // Typically, the first message is from the project owner
+          if (messages[0] && messages[0].sender_id) {
+            projectOwnerId = messages[0].sender_id;
+            console.log('Fallback: Using first message sender as project owner:', projectOwnerId);
+          }
+        }
       }
     } catch (err) {
-      console.error('Error getting project owner:', err);
+      console.error('Exception getting project owner:', err);
     }
     
     // Get all messages for this project
@@ -740,8 +760,20 @@ export async function getProjectMessages(projectId: string, contractorId?: strin
       // For contractors: messages they sent are their own
       const isOwn = message.sender_id === userId;
       
-      // Determine if message is from a contractor (anyone who isn't the project owner)
-      const isFromContractor = message.sender_id !== projectOwnerId;
+      // Determine if message is from a contractor
+      // If we couldn't determine the project owner, use message content as a hint
+      let isFromContractor = false;
+      
+      if (projectOwnerId && projectOwnerId !== 'unknown') {
+        // If we know the project owner, anyone who isn't the owner is a contractor
+        isFromContractor = message.sender_id !== projectOwnerId;
+      } else {
+        // Fallback: If the message starts with "Contractor", it's likely from a contractor
+        // Otherwise, use the isOwn flag (messages from the current user are not from contractors)
+        isFromContractor = !isOwn && (message.content.trim().startsWith('Contractor') || 
+                                     message.content.trim().includes('bid') || 
+                                     message.sender_id !== userId);
+      }
       
       // Get alias for the sender if they are a contractor
       const senderAlias = isFromContractor 

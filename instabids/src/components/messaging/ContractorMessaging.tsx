@@ -83,8 +83,14 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       // First, identify all unique contractor sender IDs
       const uniqueContractorIds = new Set();
       messages.forEach(message => {
-        const isFromContractor = message.senderId !== userId;
+        // A message is from a contractor if:
+        // 1. The sender ID is not the current user's ID AND
+        // 2. The isOwn flag is false (this is critical for correct identification)
+        const isFromContractor = message.senderId !== userId && message.isOwn === false;
+        
+        // Only add real contractor IDs to the set
         if (isFromContractor) {
+          console.log('Found contractor message:', message.content, 'from:', message.senderId);
           uniqueContractorIds.add(message.senderId);
         }
       });
@@ -93,13 +99,21 @@ export default function ContractorMessaging({ projectId, projectTitle }: Contrac
       let contractorCounter = 1;
       Array.from(uniqueContractorIds).forEach((contractorId: unknown) => {
         const contractorNumber = String(contractorCounter++);
-        contractorMap.set(contractorId, {
-          id: String(contractorId), // Use the actual sender ID as string
-          name: `Contractor ${contractorNumber}`, // Use a unique number for each contractor
-          alias: contractorNumber, // Use a unique number for each contractor
-          avatar: null,
-          bidAmount: 1000 // Set bid amount for all contractors
-        });
+        
+        // Find a message from this contractor to use as a reference
+        const contractorMessage = messages.find(m => m.senderId === contractorId && !m.isOwn);
+        
+        // Only create contractor entries for real contractors (not homeowners)
+        if (contractorMessage) {
+          console.log('Creating contractor entry for:', contractorId, 'with label:', contractorNumber);
+          contractorMap.set(contractorId, {
+            id: String(contractorId), // Use the actual sender ID as string
+            name: `Contractor ${contractorNumber}`, // Use a unique number for each contractor
+            alias: contractorNumber, // Use a unique number for each contractor
+            avatar: null,
+            bidAmount: 1000 // Set bid amount for all contractors
+          });
+        }
       });
       
       // Convert to array
